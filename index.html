@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coursado Dashboard v1.3</title>
+
+    <link rel="stylesheet" href="style.css">
+
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+.attendance-filters{display:flex;gap:.75rem;flex-wrap:wrap;margin:1rem 0 1.25rem;}
+.attendance-filters .student-search-wrapper{flex:1 1 260px;}
+.attendance-filters .category-filter{min-width:150px;}
+.attendance-day-picker{display:flex;gap:.6rem;flex-wrap:wrap;}
+.attendance-day-picker label{display:flex;align-items:center;gap:.35rem;border:1px solid #e5e7eb;padding:.55rem .7rem;border-radius:8px;background:#fff;cursor:pointer;font-size:.9rem;}
+.attendance-day-picker input,.attendance-checkbox{accent-color:#2563eb;}
+.attendance-checkbox{width:18px;height:18px;cursor:pointer;}
+.attendance-checkbox:disabled{opacity:.25;cursor:not-allowed;}
+#student-attendanceView table{min-width:1050px;}
+#student-attendanceView th,#student-attendanceView td{text-align:center;vertical-align:middle;}
+#student-attendanceView th:first-child,#student-attendanceView td:first-child{text-align:left;}
+#attendanceView table{min-width:1250px;}
+#attendanceView th,#attendanceView td{text-align:center;vertical-align:middle;}
+#attendanceView th:first-child,#attendanceView td:first-child{text-align:left;}
+.staff-day-cell .attendance-checkbox{margin-bottom:.35rem;}
+.cancelled-cell{color:#9ca3af;font-size:11px;cursor:pointer;text-decoration:line-through;}
+.import-options{display:flex;flex-direction:column;gap:.75rem;margin:1rem 0;padding:.9rem;background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;}
+.import-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;font-size:.9rem;}
+.import-row>b{min-width:80px;}
+.import-row label{display:flex;align-items:center;gap:.35rem;}
+.import-row select,.import-row input[type=text],.import-row input[type=time]{padding:7px 9px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;}
+.time-pair{display:flex;flex-direction:column;gap:.25rem;align-items:stretch;}
+.time-pair label{display:flex;align-items:center;justify-content:space-between;gap:.3rem;font-size:.7rem;color:#6b7280;}
+.time-pair input[type="time"]{padding:3px 4px;border:1px solid #d1d5db;border-radius:4px;font-size:.75rem;width:92px;color:#1f2937;background:#fff;}
+</style>
+</head>
+
+<body>
+
+<div class="app-container">
+
+    <aside class="sidebar">
+
+        <div>
+            <div class="brand">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+
+                <h2>COURSADO</h2>
+
+                <span class="sub-brand">
+                    LET US SHAPE LITTLE MINDS
+                </span>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" data-view="dashboard">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Dashboard</span>
+                </a>
+
+                <a href="#" class="nav-item" data-view="students">
+                    <i class="fa-solid fa-user-graduate"></i>
+                    <span>Students</span>
+                </a>
+
+                <a href="#" class="nav-item" data-view="payments">
+                    <i class="fa-solid fa-wallet"></i>
+                    <span>Payments</span>
+                </a>
+
+                <a href="#" class="nav-item" data-view="student-attendance">
+                    <i class="fa-solid fa-user-check"></i>
+                    <span>Student Attendance</span>
+                </a>
+
+                <a href="#" class="nav-item" data-view="books">
+                    <i class="fa-solid fa-book"></i>
+                    <span>Books</span>
+                </a>
+
+                <a href="#" class="nav-item" data-view="attendance">
+                    <i class="fa-solid fa-clipboard-user"></i>
+                    <span>Staff Attendance</span>
+                </a>
+
+                <a href="#" class="nav-item" data-view="reports">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <span>Reports & Exports</span>
+                </a>
+
+            </nav>
+        </div>
+
+    </aside>
+
+    <main class="main-content">
+
+        <header class="top-navbar">
+
+            <h1 id="pageTitle">
+                Dashboard Overview
+            </h1>
+
+            <div class="user-actions">
+                <button id="openModalBtn" class="btn primary-btn">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>Add Payment</span>
+                </button>
+
+            </div>
+
+        </header>
+
+        <div id="dashboardView" class="view-section">
+
+            <section class="metrics-grid">
+
+                <div class="metric-card">
+                    <div>
+                        <span class="metric-title">
+                            TOTAL STUDENTS
+                        </span>
+
+                        <h2 id="totalStudents">0</h2>
+                    </div>
+
+                    <div class="metric-icon blue">
+                        <i class="fa-solid fa-user-graduate"></i>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div>
+                        <span class="metric-title">
+                            TOTAL PAYMENTS
+                        </span>
+
+                        <h2 id="totalPaymentsCount">0</h2>
+                    </div>
+
+                    <div class="metric-icon indigo">
+                        <i class="fa-solid fa-receipt"></i>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div>
+                        <span class="metric-title">
+                            TOTAL COLLECTED
+                        </span>
+
+                        <h2 id="totalCollected">
+                            EGP 0
+                        </h2>
+                    </div>
+
+                    <div class="metric-icon green">
+                        <i class="fa-solid fa-wallet"></i>
+                    </div>
+                </div>
+
+                <div class="metric-card">
+                    <div>
+                        <span class="metric-title">
+                            THIS MONTH
+                        </span>
+
+                        <h2 id="thisMonthCollected">
+                            EGP 0
+                        </h2>
+                    </div>
+
+                    <div class="metric-icon teal">
+                        <i class="fa-solid fa-calendar-days"></i>
+                    </div>
+                </div>
+
+            </section>
+
+            <div class="content-grid">
+
+                <section class="panel recent-payments-panel">
+
+                    <div class="panel-header">
+
+                        <h2>
+                            Recent Payments
+                        </h2>
+
+                        <a href="#"
+                           class="view-all"
+                           data-target="payments">
+                            View All Payments
+                        </a>
+
+                    </div>
+
+                    <div class="table-responsive">
+
+                        <table>
+
+                            <thead>
+                                <tr>
+                                    <th>STUDENT</th>
+                                    <th>DATE</th>
+                                    <th>AMOUNT</th>
+                                    <th>BALANCE DUE</th>
+                                    <th>PAID FOR</th>
+                                    <th>METHOD</th>
+                                    <th>NOTE</th>
+                                    <th>ACTION</th>
+                                </tr>
+                            </thead>
+
+                            <tbody id="paymentsTableBody"></tbody>
+
+                        </table>
+
+                    </div>
+
+                </section>
+
+                <div class="right-column">
+
+                    <section class="panel quick-actions-panel">
+
+                        <h2>
+                            Quick Actions
+                        </h2>
+
+                        <div class="quick-grid">
+
+                            <button class="quick-btn"
+                                    id="quickAddPayment">
+
+                                <i class="fa-solid fa-plus-circle"></i>
+
+                                Add Payment
+
+                            </button>
+
+                            <button class="quick-btn"
+                                    data-target="attendance">
+
+                                <i class="fa-solid fa-clipboard-user"></i>
+
+                                Staff Attendance
+
+                            </button>
+
+                        </div>
+
+                    </section>
+
+                    <section class="panel recent-activity-panel">
+
+                        <h2>
+                            Recent Activity
+                        </h2>
+
+                        <div class="activity-list"
+                             id="activityList">
+
+                            <p class="empty-activity">
+                                No recent activity recorded yet.
+                            </p>
+
+                        </div>
+
+                    </section>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <div id="studentsView"
+             class="view-section"
+             style="display: none;">
+
+            <section class="panel">
+
+                <div class="panel-header students-panel-header">
+
+                    <h2>
+                        Enrolled Students Directory
+                    </h2>
+
+                    <div class="student-search-controls">
+
+                        <div class="student-search-wrapper">
+
+                            <i class="fa-solid fa-magnifying-glass"></i>
+
+                            <input
+                                type="text"
+                                id="studentSearchInput"
+                                placeholder="Search by student name..."
+                                class="search-box"
+                            >
+
+                        </div>
+
+                        <select
+                            id="studentBalanceFilter"
+                            class="category-filter">
+
+                            <option value="all">All Students</option>
+                            <option value="due">Balance Due</option>
+                            <option value="clear">Fully Paid</option>
+
+                        </select>
+
+                        <select
+                            id="studentCategoryFilter"
+                            class="category-filter">
+
+                            <option value="all">All Categories</option>
+                            <option value="Juniors">Juniors</option>
+                            <option value="Kiddos">Kiddos</option>
+                            <option value="Beginners">Beginners</option>
+                            <option value="Movers">Movers</option>
+                            <option value="Flyers">Flyers</option>
+                            <option value="Supers">Supers</option>
+                            <option value="Drama">Drama</option>
+                            <option value="Robotics">Robotics</option>
+                            <option value="Programming">Programming</option>
+                            <option value="Event">Event</option>
+                            <option value="Other">Other</option>
+
+                        </select>
+
+                    </div>
+
+                </div>
+
+                <div class="table-responsive">
+
+                    <table>
+
+                        <thead>
+                            <tr>
+                                <th>STUDENT NAME</th>
+                                <th>TOTAL PAYMENTS MADE</th>
+                                <th>TOTAL PAID (EGP)</th>
+                                <th>LATEST BALANCE DUE</th>
+                                <th>LATEST STAGE / CATEGORY</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="studentsTableBody"></tbody>
+
+                    </table>
+
+                </div>
+
+            </section>
+
+        </div>
+
+        <div id="paymentsView"
+             class="view-section"
+             style="display: none;">
+
+            <section class="panel">
+
+                <div class="panel-header">
+
+                    <h2>
+                        All Payment Records
+                    </h2>
+
+                    <input
+                        type="text"
+                        id="paymentSearchInput"
+                        placeholder="Search records..."
+                        class="search-box"
+                    >
+
+                </div>
+
+                <div class="table-responsive">
+
+                    <table>
+
+                        <thead>
+                            <tr>
+                                <th>STUDENT</th>
+                                <th>DATE</th>
+                                <th>AMOUNT</th>
+                                <th>BALANCE DUE</th>
+                                <th>PAID FOR</th>
+                                <th>METHOD</th>
+                                <th>NOTE</th>
+                                <th>ACTION</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="allPaymentsTableBody"></tbody>
+
+                    </table>
+
+                </div>
+
+            </section>
+
+        </div>
+
+        <div id="student-attendanceView"
+             class="view-section"
+             style="display: none;">
+
+            <section class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Student Attendance</h2>
+                        <p class="export-description">Track student attendance from Saturday through Thursday. Friday is not included.</p>
+                    </div>
+                    <button id="openAddStudentAttendanceModal" class="btn primary-btn">
+                        <i class="fa-solid fa-user-plus"></i>
+                        Add Student
+                    </button>
+                </div>
+
+                <div class="student-search-controls attendance-filters">
+                    <div class="student-search-wrapper">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="attendanceStudentSearch" placeholder="Search student name or mobile..." class="search-box">
+                    </div>
+
+                    <select id="attendanceCategoryFilter" class="category-filter">
+                        <option value="all">All Categories</option>
+                        <option value="Beginners">Beginners</option>
+                        <option value="Flyers">Flyers</option>
+                        <option value="Movers">Movers</option>
+                        <option value="Juniors">Juniors</option>
+                        <option value="Kiddos">Kiddos</option>
+                        <option value="Supers">Supers</option>
+                        <option value="Drama">Drama</option>
+                        <option value="Robotics">Robotics</option>
+                        <option value="Programming">Programming</option>
+                    </select>
+
+                    <select id="attendanceGroupFilter" class="category-filter">
+                        <option value="all">All Groups</option>
+                    </select>
+                </div>
+
+                <div class="week-nav">
+                    <button id="prevWeekBtn" class="btn" type="button"><i class="fa-solid fa-chevron-left"></i> Previous Week</button>
+                    <div class="week-nav-center">
+                        <span id="weekLabel" class="week-label"></span>
+                        <button id="currentWeekBtn" class="btn" type="button">This Week</button>
+                    </div>
+                    <button id="nextWeekBtn" class="btn" type="button">Next Week <i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>STUDENT</th>
+                                <th>MOBILE</th>
+                                <th>CATEGORY</th>
+                                <th>GROUP</th>
+                                <th id="dayHead_sat">SAT</th>
+                                <th id="dayHead_sun">SUN</th>
+                                <th id="dayHead_mon">MON</th>
+                                <th id="dayHead_tue">TUE</th>
+                                <th id="dayHead_wed">WED</th>
+                                <th id="dayHead_thu">THU</th>
+                                <th>COURSE TIME</th>
+                                <th>BOOK</th>
+                                <th>ACTION</th>
+                            </tr>
+                        </thead>
+                        <tbody id="studentAttendanceTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+        </div>
+
+        <div id="booksView"
+             class="view-section"
+             style="display: none;">
+
+            <section class="panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>Books Inventory</h2>
+                        <p class="export-description">Enter how many books you have for each stage. When you tick the Book box for a student in Student Attendance, that stage's count goes down by one (unticking gives it back).</p>
+                    </div>
+                </div>
+
+                <div id="booksGrid" class="books-grid"></div>
+            </section>
+
+        </div>
+
+        <div id="attendanceView"
+             class="view-section"
+             style="display: none;">
+
+            <section class="panel">
+
+                <div class="panel-header">
+                    <div>
+                        <h2>Staff Attendance Tracker</h2>
+                        <p class="export-description">Tick a day to record attendance, then set that day's arrival & departure time. Default times are filled in automatically and can be edited per day.</p>
+                    </div>
+                    <button id="openAddStaffModal" class="btn primary-btn">
+                        <i class="fa-solid fa-user-plus"></i>
+                        Add Staff Member
+                    </button>
+                </div>
+
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>STAFF NAME</th>
+                                <th>SAT</th>
+                                <th>SUN</th>
+                                <th>MON</th>
+                                <th>TUE</th>
+                                <th>WED</th>
+                                <th>THU</th>
+                                <th>WEEKLY TOTAL</th>
+                                <th>MONTHLY TOTAL</th>
+                                <th>ACTION</th>
+                            </tr>
+                        </thead>
+                        <tbody id="staffAttendanceTableBody"></tbody>
+                    </table>
+                </div>
+
+            </section>
+
+        </div>
+
+        <div id="reportsView"
+             class="view-section"
+             style="display: none;">
+
+            <section class="panel import-panel" style="margin-bottom: 1.5rem;">
+                <div class="panel-header">
+                    <div>
+                        <h2>Import Students & Payments</h2>
+                        <p class="export-description">Drop an Excel or CSV file and Coursado will detect student names, categories, and amounts automatically.</p>
+                    </div>
+                    <button id="openImportBtn" class="btn primary-btn">
+                        <i class="fa-solid fa-file-import"></i>
+                        Import Excel
+                    </button>
+                </div>
+                <div id="importDropZone" style="border:2px dashed #cbd5e1;border-radius:14px;padding:2rem;text-align:center;cursor:pointer;background:#f8fafc;transition:.2s;">
+                    <i class="fa-solid fa-cloud-arrow-up" style="font-size:2rem;color:#0ea5e9;margin-bottom:.75rem;"></i>
+                    <h3 style="margin:.25rem 0;">Drop your Excel file here</h3>
+                    <p style="margin:.25rem 0;color:#64748b;">or click to choose a .xlsx, .xls, or .csv file</p>
+                    <input id="excelFileInput" type="file" accept=".xlsx,.xls,.csv" hidden>
+                </div>
+                <div id="importStatus" style="margin-top:1rem;"></div>
+            </section>
+
+            <div id="importPreviewModal" class="modal">
+                <div class="modal-content" style="max-width:1000px;max-height:90vh;overflow:auto;">
+                    <div class="modal-header">
+                        <h2>Import Preview</h2>
+                        <span id="closeImportPreview" class="close-btn">&times;</span>
+                    </div>
+                    <div id="importMappingArea" class="import-options">
+                        <div class="import-row">
+                            <b>Add to:</b>
+                            <label><input type="radio" name="importMode" value="both" checked> Both (attendance + fees)</label>
+                            <label><input type="radio" name="importMode" value="attendance"> Attendance only</label>
+                            <label><input type="radio" name="importMode" value="fees"> Fees only</label>
+                        </div>
+                        <div class="import-row">
+                            <b>Sheet:</b><select id="importSheetSelect"></select>
+                            <b style="min-width:0">Category:</b><select id="importCategory"></select>
+                            <b style="min-width:0">Group:</b><input type="text" id="importGroup" placeholder="e.g. F.2B" style="width:100px;text-transform:uppercase;">
+                            <b style="min-width:0">Time:</b><input type="time" id="importTime">
+                        </div>
+                        <div class="import-row">
+                            <b>Class days:</b>
+                            <div class="attendance-day-picker">
+                                <label><input type="checkbox" name="importDay" value="sat"> Sat</label>
+                                <label><input type="checkbox" name="importDay" value="sun"> Sun</label>
+                                <label><input type="checkbox" name="importDay" value="mon"> Mon</label>
+                                <label><input type="checkbox" name="importDay" value="tue"> Tue</label>
+                                <label><input type="checkbox" name="importDay" value="wed"> Wed</label>
+                                <label><input type="checkbox" name="importDay" value="thu"> Thu</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="importSummary" style="margin:1rem 0;"></div>
+                    <div class="table-responsive">
+                        <table>
+                            <thead><tr><th>STUDENT</th><th>MOBILE</th><th>FEES</th><th>ATTENDED</th><th>WILL BE ADDED TO</th></tr></thead>
+                            <tbody id="importPreviewBody"></tbody>
+                        </table>
+                    </div>
+                    <div style="display:flex;justify-content:flex-end;gap:.75rem;margin-top:1rem;">
+                        <button id="cancelImportBtn" class="btn">Cancel</button>
+                        <button id="confirmImportBtn" class="btn primary-btn">Import Records</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="reports-grid">
+
+                <section class="panel">
+
+                    <h2>
+                        Financial Summary
+                    </h2>
+
+                    <div class="report-stats">
+
+                        <div class="report-stat-item">
+                            <span>Total Lifetime Revenue:</span>
+                            <strong id="reportTotalRevenue" style="color: #059669;">EGP 0</strong>
+                        </div>
+
+                        <div class="report-stat-item">
+                            <span>Total Transactions:</span>
+                            <strong id="reportTotalCount">0</strong>
+                        </div>
+
+                        <div class="report-stat-item">
+                            <span>Unique Active Students:</span>
+                            <strong id="reportUniqueStudents">0</strong>
+                        </div>
+
+                    </div>
+
+                </section>
+
+                <section class="panel">
+
+                    <h2>
+                        Category Breakdown
+                    </h2>
+
+                    <div id="categoryBreakdownContainer"
+                         class="breakdown-list">
+
+                        <p class="empty-activity">
+                            No data available for breakdown.
+                        </p>
+
+                    </div>
+
+                </section>
+
+            </div>
+
+            <div class="content-grid" style="margin-top: 1.5rem;">
+
+                <section class="panel">
+                    <h2>Monthly Revenue Chart</h2>
+                    <div class="chart-container">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                </section>
+
+                <section class="panel">
+
+                    <h2>
+                        Download Reports (Excel / CSV)
+                    </h2>
+
+                    <p class="export-description">
+                        Export filtered data spreadsheets directly
+                        to your computer.
+                    </p>
+
+                    <div class="export-controls">
+
+                        <div class="input-group">
+                            <label for="exportMonthSelect">Select Month to Export</label>
+                            <select id="exportMonthSelect">
+                                <option value="all">All Months (Lifetime)</option>
+                            </select>
+                        </div>
+
+                        <button id="downloadMonthExcelBtn" class="btn primary-btn export-btn">
+                            <i class="fa-solid fa-file-excel"></i>
+                            Download Month Spreadsheet
+                        </button>
+
+                        <hr>
+
+                        <div class="input-group">
+                            <label for="exportCategorySelect">Select Category to Export</label>
+                            <select id="exportCategorySelect">
+                                <option value="all">All Categories</option>
+                                <option value="Juniors">Juniors</option>
+                                <option value="Kiddos">Kiddos</option>
+                                <option value="Beginners">Beginners</option>
+                                <option value="Movers">Movers</option>
+                                <option value="Flyers">Flyers</option>
+                                <option value="Supers">Supers</option>
+                                <option value="Drama">Drama</option>
+                                <option value="Robotics">Robotics</option>
+                                <option value="Programming">Programming</option>
+                                <option value="Event">Event</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+
+                        <button id="downloadCategoryExcelBtn" class="btn category-export-btn">
+                            <i class="fa-solid fa-file-excel"></i>
+                            Download Category Spreadsheet
+                        </button>
+
+                    </div>
+
+                </section>
+
+            </div>
+
+        </div>
+
+    </main>
+
+</div>
+
+<div id="paymentModal" class="modal">
+
+    <div class="modal-content">
+
+        <div class="modal-header">
+            <h2>Add New Payment</h2>
+            <span id="closeModal" class="close-btn">&times;</span>
+        </div>
+
+        <form id="paymentForm">
+
+            <div class="input-group">
+                <label for="studentName">Student Name</label>
+                <input type="text" id="studentName" placeholder="Enter student's full name" required>
+            </div>
+
+            <div class="input-group">
+                <label for="categorySelect">Paid For / Category</label>
+                <select id="categorySelect" required>
+                    <option value="" disabled selected>Select category...</option>
+                    <option value="Juniors">Juniors</option>
+                    <option value="Kiddos">Kiddos</option>
+                    <option value="Beginners">Beginners</option>
+                    <option value="Movers">Movers</option>
+                    <option value="Flyers">Flyers</option>
+                    <option value="Supers">Supers</option>
+                    <option value="Drama">Drama</option>
+                    <option value="Robotics">Robotics</option>
+                    <option value="Programming">Programming</option>
+                    <option value="Event">Event</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+
+            <div class="input-group" id="otherCategoryWrapper" style="display: none;">
+                <label for="otherCategoryText">Custom Category</label>
+                <input type="text" id="otherCategoryText" placeholder="Specify custom description...">
+            </div>
+
+            <div class="input-group">
+                <label for="amountPaid">Amount (EGP)</label>
+                <input type="number" id="amountPaid" min="0" step="0.5" placeholder="0" required>
+            </div>
+
+            <div class="input-group">
+                <label for="balanceDue">Balance Due (EGP)</label>
+                <input type="number" id="balanceDue" min="0" step="0.5" placeholder="0">
+            </div>
+
+            <div class="input-group">
+                <label for="paymentNote">Payment Note</label>
+                <input type="text" id="paymentNote" placeholder="e.g., Month 1 tuition, books fee included...">
+            </div>
+
+            <div class="input-group">
+                <label for="paymentMethod">Payment Method</label>
+                <select id="paymentMethod" required>
+                    <option value="Cash">Cash</option>
+                    <option value="InstaPay">InstaPay</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="paymentDate">Date</label>
+                <input type="date" id="paymentDate" required>
+            </div>
+
+            <button type="submit" class="btn primary-btn submit-btn">
+                Save & Generate Receipt
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+<!-- Student Attendance Modal -->
+<div id="studentAttendanceModal" class="modal">
+    <div class="modal-content" style="max-width: 520px;">
+        <div class="modal-header">
+            <h2>Add Student to Attendance</h2>
+            <span id="closeStudentAttendanceModal" class="close-btn">&times;</span>
+        </div>
+
+        <form id="studentAttendanceForm">
+            <div class="input-group">
+                <label for="attendanceStudentName">Student Full Name</label>
+                <input type="text" id="attendanceStudentName" placeholder="Enter student's full name" required>
+            </div>
+
+            <div class="input-group">
+                <label for="attendanceStudentPhone">Mobile Phone</label>
+                <input type="tel" id="attendanceStudentPhone" placeholder="Enter mobile number" required>
+            </div>
+
+            <div class="input-group">
+                <label for="attendanceStudentCategory">Category</label>
+                <select id="attendanceStudentCategory" required>
+                    <option value="" disabled selected>Select category...</option>
+                    <option value="Beginners">Beginners</option>
+                    <option value="Flyers">Flyers</option>
+                    <option value="Movers">Movers</option>
+                    <option value="Juniors">Juniors</option>
+                    <option value="Kiddos">Kiddos</option>
+                    <option value="Supers">Supers</option>
+                    <option value="Drama">Drama</option>
+                    <option value="Robotics">Robotics</option>
+                    <option value="Programming">Programming</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label for="attendanceStudentGroup">Group</label>
+                <input type="text" id="attendanceStudentGroup" placeholder="e.g. GROUP 1" autocomplete="off" style="text-transform: uppercase;" required>
+            </div>
+
+            <div class="input-group">
+                <label>Course Days <span style="font-weight:400;color:#6b7280;">(choose 1 or 2)</span></label>
+                <div class="attendance-day-picker">
+                    <label><input type="checkbox" name="attendanceDay" value="sat"> Sat</label>
+                    <label><input type="checkbox" name="attendanceDay" value="sun"> Sun</label>
+                    <label><input type="checkbox" name="attendanceDay" value="mon"> Mon</label>
+                    <label><input type="checkbox" name="attendanceDay" value="tue"> Tue</label>
+                    <label><input type="checkbox" name="attendanceDay" value="wed"> Wed</label>
+                    <label><input type="checkbox" name="attendanceDay" value="thu"> Thu</label>
+                </div>
+                <small id="attendanceDayError" style="display:none;color:#dc2626;margin-top:.4rem;">Please choose exactly 1 or 2 days.</small>
+            </div>
+
+            <div class="input-group">
+                <label for="attendanceCourseTime">Course Time</label>
+                <input type="time" id="attendanceCourseTime" required>
+            </div>
+
+            <button type="submit" class="btn primary-btn submit-btn">
+                <i class="fa-solid fa-check"></i>
+                Add Student
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Staff Modal -->
+<div id="staffModal" class="modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header">
+            <h2>Add Staff Member</h2>
+            <span id="closeStaffModal" class="close-btn">&times;</span>
+        </div>
+        <form id="staffForm">
+            <div class="input-group">
+                <label for="staffNameInput">Staff Full Name</label>
+                <input type="text" id="staffNameInput" placeholder="Enter staff name..." required>
+            </div>
+            <button type="submit" class="btn primary-btn submit-btn">Add Staff</button>
+        </form>
+    </div>
+</div>
+
+<!-- Timings Edit Modal -->
+<div id="timingModal" class="modal">
+    <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-header">
+            <h2>Default Arrival & Departure</h2>
+            <span id="closeTimingModal" class="close-btn">&times;</span>
+        </div>
+        <form id="timingForm">
+            <input type="hidden" id="timingStaffId">
+            <div class="input-group">
+                <label for="arrivedAtInput">Arrived At</label>
+                <input type="time" id="arrivedAtInput">
+            </div>
+            <div class="input-group">
+                <label for="departureAtInput">Departure At</label>
+                <input type="time" id="departureAtInput">
+            </div>
+            <button type="submit" class="btn primary-btn submit-btn">Save Timings</button>
+        </form>
+    </div>
+</div>
+
+<!-- Receipt Popup Modal -->
+<div id="receiptModal" class="modal">
+    <div class="modal-content" style="max-width: 420px; text-align: center;">
+        <div class="modal-header">
+            <h2>Payment Receipt</h2>
+            <span id="closeReceiptModal" class="close-btn">&times;</span>
+        </div>
+        
+        <div id="receiptCard" style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 1.5rem; text-align: left; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <div style="text-align: center; border-bottom: 2px dashed #cbd5e1; padding-bottom: 1rem; margin-bottom: 1rem;">
+                <h3 style="color: var(--sidebar-bg); margin-bottom: 0.2rem;">COURSADO</h3>
+                <p style="font-size: 0.75rem; color: #64748b;">Official Payment Receipt</p>
+            </div>
+            <p style="margin-bottom: 0.5rem; font-size: 0.85rem;"><strong>Receipt No:</strong> <span id="recNo"></span></p>
+            <p style="margin-bottom: 0.5rem; font-size: 0.85rem;"><strong>Student Name:</strong> <span id="recStudent"></span></p>
+            <p style="margin-bottom: 0.5rem; font-size: 0.85rem;"><strong>Paid For:</strong> <span id="recCategory"></span></p>
+            <p style="margin-bottom: 0.5rem; font-size: 0.85rem;"><strong>Amount Paid:</strong> <span id="recAmount" style="color: #059669; font-weight: 600;"></span></p>
+            <p style="margin-bottom: 0.5rem; font-size: 0.85rem;"><strong>Balance Due:</strong> <span id="recBalance" style="color: #ef4444; font-weight: 600;"></span></p>
+            <p style="margin-bottom: 0.5rem; font-size: 0.85rem;"><strong>Payment Method:</strong> <span id="recMethod"></span></p>
+            <p style="margin-bottom: 0.5rem; font-size: 0.85rem;"><strong>Note:</strong> <span id="recNote"></span></p>
+            <p style="margin-bottom: 0; font-size: 0.85rem;"><strong>Date:</strong> <span id="recDate"></span></p>
+        </div>
+
+        <button id="downloadReceiptBtn" class="btn primary-btn" style="width: 100%; justify-content: center;">
+            <i class="fa-solid fa-download"></i> Download Receipt as Image
+        </button>
+    </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
