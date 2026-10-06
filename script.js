@@ -2230,6 +2230,70 @@ document.addEventListener('DOMContentLoaded', () => {
             );
     }
 
+    /* ---------- Backup & Restore ---------- */
+    const BACKUP_KEYS = [
+        'coursado_dashboard_payments',
+        'coursado_dashboard_staff',
+        'coursado_student_attendance',
+        'coursado_books_stock'
+    ];
+
+    // Ask the browser not to clear this site's data automatically
+    if (navigator.storage && navigator.storage.persist) {
+        navigator.storage.persist().catch(() => {});
+    }
+
+    const backupStatus = document.getElementById('backupStatus');
+    const restoreFileInput = document.getElementById('restoreFileInput');
+
+    document.getElementById('backupDataBtn').addEventListener('click', () => {
+        const backup = { app: 'coursado', version: 1, savedAt: new Date().toISOString(), data: {} };
+        BACKUP_KEYS.forEach(key => {
+            try { backup.data[key] = JSON.parse(localStorage.getItem(key)); }
+            catch (e) { backup.data[key] = null; }
+        });
+
+        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'coursado-backup-' + isoDate(new Date()) + '.json';
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+
+        backupStatus.textContent = 'Backup downloaded on ' + new Date().toLocaleString() + '.';
+    });
+
+    document.getElementById('restoreDataBtn').addEventListener('click', () => restoreFileInput.click());
+
+    restoreFileInput.addEventListener('change', () => {
+        const file = restoreFileInput.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const backup = JSON.parse(reader.result);
+                if (!backup || backup.app !== 'coursado' || typeof backup.data !== 'object') {
+                    throw new Error('Not a Coursado backup file');
+                }
+                if (!confirm('Restoring will REPLACE all current data with the data in this backup. Continue?')) {
+                    restoreFileInput.value = '';
+                    return;
+                }
+                BACKUP_KEYS.forEach(key => {
+                    const value = backup.data[key];
+                    if (value === null || typeof value === 'undefined') localStorage.removeItem(key);
+                    else localStorage.setItem(key, JSON.stringify(value));
+                });
+                location.reload();
+            } catch (err) {
+                restoreFileInput.value = '';
+                alert('Could not restore: this is not a valid Coursado backup file.');
+            }
+        };
+        reader.readAsText(file);
+    });
+
     renderAllViews();
 
 });

@@ -553,6 +553,27 @@
              class="view-section"
              style="display: none;">
 
+            <section class="panel" style="margin-bottom: 1.5rem;">
+                <div class="panel-header">
+                    <div>
+                        <h2>Backup &amp; Restore</h2>
+                        <p class="export-description">Your data is saved in this browser. Download a backup file regularly and keep it somewhere safe (e.g. a USB drive or Google Drive). If the data ever disappears, restore it from the file.</p>
+                    </div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <button id="backupDataBtn" class="btn primary-btn" type="button">
+                            <i class="fa-solid fa-download"></i>
+                            Download Backup
+                        </button>
+                        <button id="restoreDataBtn" class="btn" type="button">
+                            <i class="fa-solid fa-upload"></i>
+                            Restore from Backup
+                        </button>
+                        <input id="restoreFileInput" type="file" accept=".json,application/json" hidden>
+                    </div>
+                </div>
+                <div id="backupStatus" class="export-description"></div>
+            </section>
+
             <section class="panel import-panel" style="margin-bottom: 1.5rem;">
                 <div class="panel-header">
                     <div>
