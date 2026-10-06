@@ -1,0 +1,2235 @@
+document.addEventListener('DOMContentLoaded', () => {
+
+    const paymentModal = document.getElementById('paymentModal');
+    const openModalBtn = document.getElementById('openModalBtn');
+    const quickAddPayment = document.getElementById('quickAddPayment');
+    const closeModal = document.getElementById('closeModal');
+
+    const paymentForm = document.getElementById('paymentForm');
+
+    const studentNameInput = document.getElementById('studentName');
+    const categorySelect = document.getElementById('categorySelect');
+    const otherCategoryWrapper = document.getElementById('otherCategoryWrapper');
+    const otherCategoryText = document.getElementById('otherCategoryText');
+
+    const amountPaidInput = document.getElementById('amountPaid');
+    const balanceDueInput = document.getElementById('balanceDue');
+    const paymentNoteInput = document.getElementById('paymentNote');
+    const paymentMethodSelect = document.getElementById('paymentMethod');
+    const paymentDateInput = document.getElementById('paymentDate');
+
+    const receiptModal = document.getElementById('receiptModal');
+    const closeReceiptModal = document.getElementById('closeReceiptModal');
+    const downloadReceiptBtn = document.getElementById('downloadReceiptBtn');
+
+    const paymentsTableBody = document.getElementById('paymentsTableBody');
+    const allPaymentsTableBody = document.getElementById('allPaymentsTableBody');
+    const studentsTableBody = document.getElementById('studentsTableBody');
+
+    const totalStudentsSpan = document.getElementById('totalStudents');
+    const totalPaymentsCountSpan = document.getElementById('totalPaymentsCount');
+    const totalCollectedSpan = document.getElementById('totalCollected');
+    const thisMonthCollectedSpan = document.getElementById('thisMonthCollected');
+
+    const activityList = document.getElementById('activityList');
+    const pageTitle = document.getElementById('pageTitle');
+
+    const navItems = document.querySelectorAll('.nav-menu .nav-item');
+    const viewSections = document.querySelectorAll('.view-section');
+
+    const studentSearchInput = document.getElementById('studentSearchInput');
+    const studentCategoryFilter = document.getElementById('studentCategoryFilter');
+    const paymentSearchInput = document.getElementById('paymentSearchInput');
+
+    const reportTotalRevenue = document.getElementById('reportTotalRevenue');
+    const reportTotalCount = document.getElementById('reportTotalCount');
+    const reportUniqueStudents = document.getElementById('reportUniqueStudents');
+    const categoryBreakdownContainer = document.getElementById('categoryBreakdownContainer');
+
+    const exportMonthSelect = document.getElementById('exportMonthSelect');
+    const exportCategorySelect = document.getElementById('exportCategorySelect');
+    const downloadMonthExcelBtn = document.getElementById('downloadMonthExcelBtn');
+    const downloadCategoryExcelBtn = document.getElementById('downloadCategoryExcelBtn');
+
+    const staffAttendanceTableBody = document.getElementById('staffAttendanceTableBody');
+    const openAddStaffModal = document.getElementById('openAddStaffModal');
+    const staffModal = document.getElementById('staffModal');
+    const closeStaffModal = document.getElementById('closeStaffModal');
+    const staffForm = document.getElementById('staffForm');
+    const staffNameInput = document.getElementById('staffNameInput');
+
+    const timingModal = document.getElementById('timingModal');
+    const closeTimingModal = document.getElementById('closeTimingModal');
+    const timingForm = document.getElementById('timingForm');
+    const timingStaffId = document.getElementById('timingStaffId');
+    const arrivedAtInput = document.getElementById('arrivedAtInput');
+    const departureAtInput = document.getElementById('departureAtInput');
+
+    const studentAttendanceTableBody = document.getElementById('studentAttendanceTableBody');
+    const openAddStudentAttendance = document.getElementById('openAddStudentAttendanceModal');
+    const studentAttendanceModal = document.getElementById('studentAttendanceModal');
+    const closeStudentAttendanceModal = document.getElementById('closeStudentAttendanceModal');
+    const studentAttendanceForm = document.getElementById('studentAttendanceForm');
+
+    const attendanceStudentName = document.getElementById('attendanceStudentName');
+    const attendanceMobile = document.getElementById('attendanceStudentPhone');
+    const attendanceCategory = document.getElementById('attendanceStudentCategory');
+    const attendanceGroup = document.getElementById('attendanceStudentGroup');
+    const attendanceTime = document.getElementById('attendanceCourseTime');
+
+    const attendanceSearch = document.getElementById('attendanceStudentSearch');
+    const attendanceCategoryFilter = document.getElementById('attendanceCategoryFilter');
+    const attendanceGroupFilter = document.getElementById('attendanceGroupFilter');
+
+    const dayCheckboxes = document.querySelectorAll('input[name="attendanceDay"]');
+
+    let monthlyChartInstance = null;
+    let lastAddedPayment = null;
+
+    paymentDateInput.value = new Date().toISOString().split('T')[0];
+
+    let payments = JSON.parse(localStorage.getItem('coursado_dashboard_payments')) || [];
+    let staffList = JSON.parse(localStorage.getItem('coursado_dashboard_staff')) || [];
+    let studentAttendanceList = JSON.parse(localStorage.getItem('coursado_student_attendance')) || [];
+
+    /* ---------- Books inventory (stages only, no groups) ---------- */
+    const BOOK_STAGES = ['Juniors', 'Kiddos', 'Beginners', 'Movers', 'Flyers', 'Supers'];
+    let booksStock = JSON.parse(localStorage.getItem('coursado_books_stock')) || {};
+    BOOK_STAGES.forEach(stage => { booksStock[stage] = Math.max(0, parseInt(booksStock[stage], 10) || 0); });
+
+    function saveBooksStock() {
+        localStorage.setItem('coursado_books_stock', JSON.stringify(booksStock));
+    }
+
+    /* ---------- Weekly attendance helpers (week = Saturday to Thursday) ---------- */
+    const DAY_KEYS = ['sat', 'sun', 'mon', 'tue', 'wed', 'thu'];
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const isoDate = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, 12);
+    const weekStartOf = d => addDays(d, -((d.getDay() + 1) % 7));
+    const dayKeyOf = d => ['sun', 'mon', 'tue', 'wed', 'thu', null, 'sat'][d.getDay()];
+    const fmtShort = d => d.getDate() + ' ' + MONTHS[d.getMonth()];
+    const currentWeekStart = () => weekStartOf(new Date());
+    let viewWeekStart = currentWeekStart();
+    const weekKeyView = () => isoDate(viewWeekStart);
+
+    // old data had one single week; keep it as the current week
+    studentAttendanceList.forEach(s => {
+        if (!s.attendanceByWeek) {
+            s.attendanceByWeek = {};
+            if (s.attendance) s.attendanceByWeek[isoDate(currentWeekStart())] = s.attendance;
+        }
+        delete s.attendance;
+    });
+
+    function renderWeekHeader() {
+        const end = addDays(viewWeekStart, 5);
+        const isCurrent = weekKeyView() === isoDate(currentWeekStart());
+        document.getElementById('weekLabel').innerHTML =
+            '<strong>' + fmtShort(viewWeekStart) + ' - ' + fmtShort(end) + ' ' + end.getFullYear() + '</strong>' +
+            (isCurrent ? ' <span class="method-badge">This week</span>' : '');
+        document.getElementById('nextWeekBtn').disabled = isCurrent;
+        DAY_KEYS.forEach((k, i) => {
+            const th = document.getElementById('dayHead_' + k);
+            if (th) th.innerHTML = k.toUpperCase() + '<small>' + fmtShort(addDays(viewWeekStart, i)) + '</small>';
+        });
+    }
+
+    document.getElementById('prevWeekBtn').addEventListener('click', () => { viewWeekStart = addDays(viewWeekStart, -7); renderStudentAttendance(); });
+    document.getElementById('nextWeekBtn').addEventListener('click', () => { viewWeekStart = addDays(viewWeekStart, 7); renderStudentAttendance(); });
+    document.getElementById('currentWeekBtn').addEventListener('click', () => { viewWeekStart = currentWeekStart(); renderStudentAttendance(); });
+
+    function switchView(targetViewId) {
+        viewSections.forEach(section => {
+            section.style.display = 'none';
+        });
+
+        navItems.forEach(item => {
+            item.classList.remove('active');
+        });
+
+        const targetSection = document.getElementById(`${targetViewId}View`);
+        const targetNav = document.querySelector(`.nav-menu .nav-item[data-view="${targetViewId}"]`);
+
+        if (targetSection) targetSection.style.display = 'block';
+        if (targetNav) targetNav.classList.add('active');
+
+        const titles = {
+            dashboard: 'Dashboard Overview',
+            students: 'Students Directory',
+            payments: 'Payment Records',
+            attendance: 'Staff Attendance Tracker',
+            books: 'Books Inventory',
+            'student-attendance': 'Student Attendance',
+            reports: 'Financial Reports & Exports'
+        };
+
+        pageTitle.textContent = titles[targetViewId] || 'Dashboard Overview';
+
+        renderAllViews();
+    }
+
+    navItems.forEach(item => {
+        item.addEventListener('click', e => {
+            e.preventDefault();
+
+            const view = item.getAttribute('data-view');
+
+            if (view) {
+                switchView(view);
+            }
+        });
+    });
+
+    document.querySelectorAll('[data-target]').forEach(el => {
+        el.addEventListener('click', e => {
+            e.preventDefault();
+
+            const target = el.getAttribute('data-target');
+
+            switchView(target);
+        });
+    });
+
+    const toggleModal = show => {
+        paymentModal.style.display = show ? 'flex' : 'none';
+    };
+
+    openModalBtn.addEventListener('click', () => toggleModal(true));
+    quickAddPayment.addEventListener('click', () => toggleModal(true));
+    closeModal.addEventListener('click', () => toggleModal(false));
+
+    openAddStaffModal.addEventListener('click', () => {
+        staffModal.style.display = 'flex';
+    });
+
+    closeStaffModal.addEventListener('click', () => {
+        staffModal.style.display = 'none';
+    });
+
+    closeTimingModal.addEventListener('click', () => {
+        timingModal.style.display = 'none';
+    });
+
+    openAddStudentAttendance.addEventListener('click', () => {
+        studentAttendanceModal.style.display = 'flex';
+    });
+
+    closeStudentAttendanceModal.addEventListener('click', () => {
+        studentAttendanceModal.style.display = 'none';
+    });
+
+    window.addEventListener('click', e => {
+        if (e.target === paymentModal) {
+            toggleModal(false);
+        }
+
+        if (e.target === receiptModal) {
+            receiptModal.style.display = 'none';
+        }
+
+        if (e.target === staffModal) {
+            staffModal.style.display = 'none';
+        }
+
+        if (e.target === timingModal) {
+            timingModal.style.display = 'none';
+        }
+
+        if (e.target === studentAttendanceModal) {
+            studentAttendanceModal.style.display = 'none';
+        }
+    });
+
+    closeReceiptModal.addEventListener('click', () => {
+        receiptModal.style.display = 'none';
+    });
+
+    staffForm.addEventListener('submit', e => {
+        e.preventDefault();
+
+        const name = staffNameInput.value.trim();
+
+        if (!name) return;
+
+        const newStaff = {
+            id: Date.now(),
+            name: name,
+            attendance: {
+                sat: false,
+                sun: false,
+                mon: false,
+                tue: false,
+                wed: false,
+                thu: false
+            },
+            timings: createEmptyTimings(),
+            monthlyDays: 0,
+            arrivedAt: '09:00',
+            departureAt: '17:00'
+        };
+
+        staffList.push(newStaff);
+
+        saveAndRenderStaff();
+
+        staffForm.reset();
+
+        staffModal.style.display = 'none';
+    });
+
+    timingForm.addEventListener('submit', e => {
+        e.preventDefault();
+
+        const id = Number(timingStaffId.value);
+
+        const staff = staffList.find(s => s.id === id);
+
+        if (staff) {
+            staff.arrivedAt = arrivedAtInput.value || '09:00';
+            staff.departureAt = departureAtInput.value || '17:00';
+
+            saveAndRenderStaff();
+        }
+
+        timingModal.style.display = 'none';
+    });
+
+    const WEEK_DAYS = ['sat', 'sun', 'mon', 'tue', 'wed', 'thu'];
+
+    function createEmptyTimings() {
+        const t = {};
+        WEEK_DAYS.forEach(day => {
+            t[day] = { arr: '', dep: '' };
+        });
+        return t;
+    }
+
+    function ensureStaffShape(staff) {
+        if (!staff.attendance) {
+            staff.attendance = {};
+        }
+        if (!staff.timings) {
+            staff.timings = createEmptyTimings();
+        }
+        WEEK_DAYS.forEach(day => {
+            if (typeof staff.attendance[day] === 'undefined') {
+                staff.attendance[day] = false;
+            }
+            if (!staff.timings[day]) {
+                staff.timings[day] = { arr: '', dep: '' };
+            }
+        });
+    }
+
+    window.updateStaffTiming = function(staffId, day, field, value) {
+        const staff = staffList.find(s => s.id === staffId);
+
+        if (!staff) return;
+
+        ensureStaffShape(staff);
+
+        staff.timings[day][field] = value;
+
+        localStorage.setItem(
+            'coursado_dashboard_staff',
+            JSON.stringify(staffList)
+        );
+    };
+
+    window.openTimingModal = function(id) {
+        const staff = staffList.find(s => s.id === id);
+
+        if (staff) {
+            timingStaffId.value = staff.id;
+            arrivedAtInput.value = staff.arrivedAt || '09:00';
+            departureAtInput.value = staff.departureAt || '17:00';
+
+            timingModal.style.display = 'flex';
+        }
+    };
+
+    window.toggleStaffAttendance = function(staffId, dayKey) {
+        const staff = staffList.find(s => s.id === staffId);
+
+        if (!staff) return;
+
+        ensureStaffShape(staff);
+
+        staff.attendance[dayKey] = !staff.attendance[dayKey];
+
+        if (staff.attendance[dayKey]) {
+            if (!staff.timings[dayKey].arr) {
+                staff.timings[dayKey].arr = staff.arrivedAt || '09:00';
+            }
+            if (!staff.timings[dayKey].dep) {
+                staff.timings[dayKey].dep = staff.departureAt || '17:00';
+            }
+
+            staff.monthlyDays = (staff.monthlyDays || 0) + 1;
+        } else {
+            staff.monthlyDays = Math.max(
+                0,
+                (staff.monthlyDays || 0) - 1
+            );
+        }
+
+        saveAndRenderStaff();
+    };
+
+    window.deleteStaff = function(id) {
+        if (confirm('Are you sure you want to remove this staff member?')) {
+            staffList = staffList.filter(s => s.id !== id);
+
+            saveAndRenderStaff();
+        }
+    };
+
+    function saveAndRenderStaff() {
+        localStorage.setItem(
+            'coursado_dashboard_staff',
+            JSON.stringify(staffList)
+        );
+
+        renderStaffAttendance();
+    }
+
+    function renderStaffAttendance() {
+        staffAttendanceTableBody.innerHTML = '';
+
+        if (staffList.length === 0) {
+            staffAttendanceTableBody.innerHTML = `
+                <tr>
+                    <td colspan="11" style="text-align:center;">
+                        No staff members added yet.
+                    </td>
+                </tr>
+            `;
+
+            return;
+        }
+
+        const days = [
+            'sat',
+            'sun',
+            'mon',
+            'tue',
+            'wed',
+            'thu'
+        ];
+
+        staffList.forEach(staff => {
+
+            ensureStaffShape(staff);
+
+            let weeklyTotal = 0;
+
+            days.forEach(day => {
+                if (staff.attendance[day]) {
+                    weeklyTotal++;
+                }
+            });
+
+            const row = document.createElement('tr');
+
+            row.innerHTML = `
+                <td>
+                    <strong>${escapeHtml(staff.name)}</strong>
+                </td>
+
+                ${days.map(day => `
+                    <td class="staff-day-cell">
+                        <input
+                            type="checkbox"
+                            class="attendance-checkbox"
+                            ${staff.attendance[day] ? 'checked' : ''}
+                            onchange="toggleStaffAttendance(${staff.id}, '${day}')"
+                        >
+                        ${staff.attendance[day] ? `
+                            <div class="time-pair">
+                                <label>Arr
+                                    <input
+                                        type="time"
+                                        value="${escapeHtml(staff.timings[day].arr || '')}"
+                                        onchange="updateStaffTiming(${staff.id}, '${day}', 'arr', this.value)"
+                                    >
+                                </label>
+                                <label>Dep
+                                    <input
+                                        type="time"
+                                        value="${escapeHtml(staff.timings[day].dep || '')}"
+                                        onchange="updateStaffTiming(${staff.id}, '${day}', 'dep', this.value)"
+                                    >
+                                </label>
+                            </div>
+                        ` : ''}
+                    </td>
+                `).join('')}
+
+                <td>
+                    ${weeklyTotal} day(s)
+                </td>
+
+                <td>
+                    ${staff.monthlyDays || 0} day(s)
+                </td>
+
+                <td>
+                    <button
+                        class="btn"
+                        onclick="deleteStaff(${staff.id})"
+                    >
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            `;
+
+            staffAttendanceTableBody.appendChild(row);
+        });
+    }
+
+    function getSelectedDays() {
+        const selected = [];
+
+        dayCheckboxes.forEach(checkbox => {
+            if (checkbox.checked) {
+                selected.push(checkbox.value);
+            }
+        });
+
+        return selected;
+    }
+
+    function updateAttendanceDayLimit() {
+        const selected = getSelectedDays();
+
+        if (selected.length > 2) {
+            alert('A student can attend only 1 or 2 days.');
+
+            const checkedBoxes = [...dayCheckboxes]
+                .filter(box => box.checked);
+
+            checkedBoxes[checkedBoxes.length - 1].checked = false;
+        }
+    }
+
+    dayCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', updateAttendanceDayLimit);
+    });
+
+    studentAttendanceForm.addEventListener('submit', e => {
+        e.preventDefault();
+
+        const name = attendanceStudentName.value.trim();
+        const mobile = attendanceMobile.value.trim();
+        const category = attendanceCategory.value;
+        const group = attendanceGroup.value.trim().toUpperCase();
+        const courseTime = attendanceTime.value;
+        const selectedDays = getSelectedDays();
+
+        if (!name || !mobile || !category || !group || !courseTime) {
+            alert('Please complete all student information.');
+            return;
+        }
+
+        const dayError = document.getElementById('attendanceDayError');
+
+        if (selectedDays.length < 1 || selectedDays.length > 2) {
+            if (dayError) dayError.style.display = 'block';
+            return;
+        }
+
+        if (dayError) dayError.style.display = 'none';
+
+        const duplicate = studentAttendanceList.some(student =>
+            student.name.toLowerCase() === name.toLowerCase() &&
+            student.mobile === mobile
+        );
+
+        if (duplicate) {
+            alert('This student is already in attendance.');
+            return;
+        }
+
+        const newStudent = {
+            id: Date.now(),
+            name,
+            mobile,
+            category,
+            group,
+            courseTime,
+            courseDays: selectedDays,
+            attendanceByWeek: {},
+            bookTaken: false
+        };
+
+        studentAttendanceList.push(newStudent);
+
+        localStorage.setItem(
+            'coursado_student_attendance',
+            JSON.stringify(studentAttendanceList)
+        );
+
+        renderStudentAttendance();
+
+        studentAttendanceForm.reset();
+
+        studentAttendanceModal.style.display = 'none';
+    });
+
+    function refreshGroupFilter() {
+        const current = attendanceGroupFilter.value;
+
+        const groups = [...new Set(
+            studentAttendanceList
+                .map(student => (student.group || '').toUpperCase())
+                .filter(Boolean)
+        )].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+        attendanceGroupFilter.innerHTML = '<option value="all">All Groups</option>';
+
+        groups.forEach(group => {
+            const option = document.createElement('option');
+            option.value = group;
+            option.textContent = group;
+            attendanceGroupFilter.appendChild(option);
+        });
+
+        attendanceGroupFilter.value = groups.includes(current) ? current : 'all';
+    }
+
+    function renderStudentAttendance() {
+        studentAttendanceTableBody.innerHTML = '';
+
+        renderWeekHeader();
+        refreshGroupFilter();
+
+        const searchValue = attendanceSearch.value.toLowerCase().trim();
+        const categoryValue = attendanceCategoryFilter.value;
+        const groupValue = attendanceGroupFilter.value;
+
+        let filtered = studentAttendanceList.filter(student => {
+
+            const matchesSearch =
+                student.name.toLowerCase().includes(searchValue) ||
+                student.mobile.includes(searchValue);
+
+            const matchesCategory =
+                categoryValue === 'all' ||
+                student.category === categoryValue;
+
+            const matchesGroup =
+                groupValue === 'all' ||
+                (student.group || '').toUpperCase() === groupValue;
+
+            return matchesSearch &&
+                   matchesCategory &&
+                   matchesGroup;
+        });
+
+        if (filtered.length === 0) {
+            studentAttendanceTableBody.innerHTML = `
+                <tr>
+                    <td colspan="13" style="text-align:center;">
+                        No students found.
+                    </td>
+                </tr>
+            `;
+
+            return;
+        }
+
+        filtered.forEach(student => {
+
+            const row = document.createElement('tr');
+
+            const dayColumns = [
+                'sat',
+                'sun',
+                'mon',
+                'tue',
+                'wed',
+                'thu'
+            ];
+
+            const courseDays = student.courseDays || [];
+            const studentAttendance = (student.attendanceByWeek || {})[weekKeyView()] || {};
+
+            row.innerHTML = `
+                <td>
+                    <strong>${escapeHtml(student.name)}</strong>
+                </td>
+
+                <td>
+                    ${escapeHtml(student.mobile)}
+                </td>
+
+                <td>
+                    ${escapeHtml(student.category)}
+                </td>
+
+                <td>
+                    ${escapeHtml((student.group || '').toUpperCase())}
+                </td>
+
+                ${dayColumns.map(day => {
+
+                    if (!courseDays.includes(day)) {
+                        return `<td>&mdash;</td>`;
+                    }
+
+                    if (studentAttendance[day] === 'cancelled') {
+                        return `<td class="cancelled-cell" title="Class cancelled - click to reset" onclick="toggleStudentAttendance(${student.id}, '${day}')">Cancelled</td>`;
+                    }
+
+                    return `
+                        <td>
+                            <input
+                                type="checkbox"
+                                class="attendance-checkbox"
+                                ${studentAttendance[day] ? 'checked' : ''}
+                                onchange="toggleStudentAttendance(${student.id}, '${day}')"
+                            >
+                        </td>
+                    `;
+                }).join('')}
+
+                <td>
+                    ${escapeHtml(student.courseTime || '-')}
+                </td>
+
+                <td>
+                    ${BOOK_STAGES.includes(student.category)
+                        ? `<input
+                                type="checkbox"
+                                class="attendance-checkbox"
+                                title="Student received the book"
+                                ${student.bookTaken ? 'checked' : ''}
+                                onchange="toggleStudentBook(${student.id})"
+                            >`
+                        : '&mdash;'}
+                </td>
+
+                <td>
+                    <button
+                        class="btn"
+                        onclick="deleteStudentAttendance(${student.id})"
+                    >
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            `;
+
+            studentAttendanceTableBody.appendChild(row);
+        });
+    }
+
+    window.toggleStudentAttendance = function(studentId, day) {
+
+        const student = studentAttendanceList.find(
+            s => s.id === studentId
+        );
+
+        if (!student) return;
+
+        if (!student.courseDays.includes(day)) {
+            return;
+        }
+
+        const wk = weekKeyView();
+        student.attendanceByWeek = student.attendanceByWeek || {};
+        const rec = student.attendanceByWeek[wk] = student.attendanceByWeek[wk] || {};
+        rec[day] = rec[day] === 'cancelled' ? false : !rec[day];
+
+        localStorage.setItem(
+            'coursado_student_attendance',
+            JSON.stringify(studentAttendanceList)
+        );
+
+        renderStudentAttendance();
+    };
+
+    window.toggleStudentBook = function(studentId) {
+        const student = studentAttendanceList.find(s => s.id === studentId);
+        if (!student || !BOOK_STAGES.includes(student.category)) return;
+
+        const stage = student.category;
+
+        if (!student.bookTaken) {
+            if ((booksStock[stage] || 0) < 1) {
+                alert('No ' + stage + ' books left in stock. Add books in the Books tab first.');
+                renderStudentAttendance();
+                return;
+            }
+            booksStock[stage] -= 1;
+            student.bookTaken = true;
+        } else {
+            booksStock[stage] += 1;
+            student.bookTaken = false;
+        }
+
+        localStorage.setItem('coursado_student_attendance', JSON.stringify(studentAttendanceList));
+        saveBooksStock();
+
+        renderStudentAttendance();
+        renderBooks();
+    };
+
+    function renderBooks() {
+        const grid = document.getElementById('booksGrid');
+        if (!grid) return;
+
+        grid.innerHTML = BOOK_STAGES.map(stage => `
+            <div class="book-card">
+                <div class="book-card-title">
+                    <i class="fa-solid fa-book"></i> ${stage}
+                </div>
+                <div class="book-count ${booksStock[stage] === 0 ? 'empty' : ''}">${booksStock[stage]}</div>
+                <div class="book-count-label">books available</div>
+                <input type="number" min="0" step="1" id="bookInput_${stage}" placeholder="Number of books">
+                <div class="book-card-actions">
+                    <button type="button" class="btn primary-btn" data-book-action="add" data-stage="${stage}">Add</button>
+                    <button type="button" class="btn" data-book-action="set" data-stage="${stage}">Set total</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    document.getElementById('booksGrid').addEventListener('click', e => {
+        const btn = e.target.closest('button[data-book-action]');
+        if (!btn) return;
+
+        const stage = btn.dataset.stage;
+        const input = document.getElementById('bookInput_' + stage);
+        const amount = parseInt(input.value, 10);
+        const action = btn.dataset.bookAction;
+
+        if (isNaN(amount) || amount < 0 || (action === 'add' && amount < 1)) {
+            alert('Please enter a valid number of books.');
+            return;
+        }
+
+        booksStock[stage] = action === 'add' ? booksStock[stage] + amount : amount;
+        saveBooksStock();
+        renderBooks();
+    });
+
+    window.deleteStudentAttendance = function(id) {
+
+        if (
+            confirm(
+                'Are you sure you want to remove this student from attendance?'
+            )
+        ) {
+            studentAttendanceList =
+                studentAttendanceList.filter(
+                    student => student.id !== id
+                );
+
+            localStorage.setItem(
+                'coursado_student_attendance',
+                JSON.stringify(studentAttendanceList)
+            );
+
+            renderStudentAttendance();
+        }
+    };
+
+    attendanceSearch.addEventListener(
+        'input',
+        renderStudentAttendance
+    );
+
+    attendanceCategoryFilter.addEventListener(
+        'change',
+        renderStudentAttendance
+    );
+
+    attendanceGroupFilter.addEventListener(
+        'change',
+        renderStudentAttendance
+    );
+
+    // Force the Group input to uppercase while typing
+    attendanceGroup.addEventListener('input', () => {
+        const start = attendanceGroup.selectionStart;
+        const end = attendanceGroup.selectionEnd;
+        attendanceGroup.value = attendanceGroup.value.toUpperCase();
+        attendanceGroup.setSelectionRange(start, end);
+    });
+
+    categorySelect.addEventListener('change', e => {
+
+        if (e.target.value === 'Other') {
+            otherCategoryWrapper.style.display = 'flex';
+
+            otherCategoryText.setAttribute(
+                'required',
+                'true'
+            );
+
+        } else {
+
+            otherCategoryWrapper.style.display = 'none';
+
+            otherCategoryText.removeAttribute(
+                'required'
+            );
+
+            otherCategoryText.value = '';
+        }
+    });
+
+    paymentForm.addEventListener('submit', e => {
+
+        e.preventDefault();
+
+        let categoryValue = categorySelect.value;
+
+        if (categoryValue === 'Other') {
+            categoryValue =
+                otherCategoryText.value.trim() || 'Other';
+        }
+
+        const newPayment = {
+            id: Date.now(),
+            name: studentNameInput.value.trim(),
+            category: categoryValue,
+            amount: parseFloat(amountPaidInput.value),
+            balanceDue: balanceDueInput.value
+                ? parseFloat(balanceDueInput.value)
+                : 0,
+            note: paymentNoteInput.value.trim() || '-',
+            method: paymentMethodSelect.value,
+            date: paymentDateInput.value
+        };
+
+        payments.unshift(newPayment);
+
+        lastAddedPayment = newPayment;
+
+        saveAndRender();
+
+        paymentForm.reset();
+
+        paymentDateInput.value =
+            new Date().toISOString().split('T')[0];
+
+        otherCategoryWrapper.style.display = 'none';
+
+        toggleModal(false);
+
+        showReceiptPopup(newPayment);
+    });
+
+    function showReceiptPopup(p) {
+
+        document.getElementById('recNo').textContent =
+            `#${p.id}`;
+
+        document.getElementById('recStudent').textContent =
+            p.name;
+
+        document.getElementById('recCategory').textContent =
+            p.category;
+
+        document.getElementById('recAmount').textContent =
+            `EGP ${p.amount.toLocaleString()}`;
+
+        document.getElementById('recBalance').textContent =
+            `EGP ${p.balanceDue.toLocaleString()}`;
+
+        document.getElementById('recMethod').textContent =
+            p.method;
+
+        document.getElementById('recNote').textContent =
+            p.note;
+
+        document.getElementById('recDate').textContent =
+            p.date;
+
+        receiptModal.style.display = 'flex';
+    }
+
+    downloadReceiptBtn.addEventListener('click', () => {
+
+        const receiptCard =
+            document.getElementById('receiptCard');
+
+        html2canvas(receiptCard).then(canvas => {
+
+            const link =
+                document.createElement('a');
+
+            link.download =
+                `Receipt_${lastAddedPayment ? lastAddedPayment.name.replace(/\s+/g, '_') : 'Payment'}.png`;
+
+            link.href =
+                canvas.toDataURL('image/png');
+
+            link.click();
+        });
+    });
+
+    window.deletePayment = function(id) {
+
+        if (
+            confirm(
+                'Are you sure you want to delete this payment record?'
+            )
+        ) {
+            payments =
+                payments.filter(p => p.id !== id);
+
+            saveAndRender();
+        }
+    };
+
+    function saveAndRender() {
+
+        localStorage.setItem(
+            'coursado_dashboard_payments',
+            JSON.stringify(payments)
+        );
+
+        renderAllViews();
+    }
+
+    function renderAllViews() {
+
+        renderDashboard();
+
+        const categoryFilterVal =
+            studentCategoryFilter
+                ? studentCategoryFilter.value
+                : 'all';
+
+        const studentSearchVal =
+            studentSearchInput
+                ? studentSearchInput.value
+                : '';
+
+        const balanceFilterVal =
+            document.getElementById('studentBalanceFilter')
+                ? document.getElementById('studentBalanceFilter').value
+                : 'all';
+
+        renderStudentsTable(
+            payments,
+            categoryFilterVal,
+            studentSearchVal,
+            balanceFilterVal
+        );
+
+        renderPaymentsTable(payments);
+
+        renderStaffAttendance();
+
+        renderStudentAttendance();
+
+        renderBooks();
+
+        renderReports();
+
+        populateExportDropdowns();
+    }
+
+    function renderDashboard() {
+
+        paymentsTableBody.innerHTML = '';
+
+        if (payments.length === 0) {
+
+            paymentsTableBody.innerHTML = `
+                <tr>
+                    <td colspan="8" style="text-align:center;">
+                        No payment records found.
+                    </td>
+                </tr>
+            `;
+
+            totalStudentsSpan.textContent = '0';
+            totalPaymentsCountSpan.textContent = '0';
+            totalCollectedSpan.textContent = 'EGP 0';
+            thisMonthCollectedSpan.textContent = 'EGP 0';
+
+            activityList.innerHTML =
+                `<p class="empty-activity">No recent activity recorded yet.</p>`;
+
+            return;
+        }
+
+        let totalSum = 0;
+        let currentMonthSum = 0;
+
+        const uniqueStudents = new Set();
+
+        const currentMonthStr =
+            new Date().toISOString().slice(0, 7);
+
+        payments.forEach(p => {
+
+            totalSum += p.amount;
+
+            uniqueStudents.add(
+                p.name.toLowerCase().trim()
+            );
+
+            if (
+                p.date &&
+                p.date.startsWith(currentMonthStr)
+            ) {
+                currentMonthSum += p.amount;
+            }
+        });
+
+        totalStudentsSpan.textContent =
+            uniqueStudents.size;
+
+        totalPaymentsCountSpan.textContent =
+            payments.length;
+
+        totalCollectedSpan.textContent =
+            `EGP ${totalSum.toLocaleString()}`;
+
+        thisMonthCollectedSpan.textContent =
+            `EGP ${currentMonthSum.toLocaleString()}`;
+
+        const recentSlice =
+            payments.slice(0, 5);
+
+        recentSlice.forEach(p => {
+
+            const row =
+                document.createElement('tr');
+
+            row.innerHTML = `
+                <td>
+                    <strong>${escapeHtml(p.name)}</strong>
+                </td>
+
+                <td>
+                    ${escapeHtml(p.date)}
+                </td>
+
+                <td class="amount-paid">
+                    EGP ${p.amount.toLocaleString()}
+                </td>
+
+                <td class="${(p.balanceDue || 0) > 0 ? 'balance-due' : 'balance-clear'}">
+                    EGP ${(p.balanceDue || 0).toLocaleString()}
+                </td>
+
+                <td>
+                    ${escapeHtml(p.category)}
+                </td>
+
+                <td>
+                    <span class="method-badge">
+                        ${escapeHtml(p.method)}
+                    </span>
+                </td>
+
+                <td>
+                    ${escapeHtml(p.note || '-')}
+                </td>
+
+                <td>
+                    <button
+                        class="btn"
+                        onclick="deletePayment(${p.id})"
+                    >
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            `;
+
+            paymentsTableBody.appendChild(row);
+        });
+
+        const latest = payments[0];
+
+        activityList.innerHTML = `
+            <div style="display:flex;align-items:start;gap:.5rem;">
+                <i class="fa-solid fa-circle-check"></i>
+
+                <div>
+                    <p>
+                        Payment of
+                        <strong>
+                            EGP ${latest.amount.toLocaleString()}
+                        </strong>
+                        recorded for
+                        <strong>
+                            ${escapeHtml(latest.name)}
+                        </strong>.
+                    </p>
+
+                    <span>
+                        Note:
+                        ${escapeHtml(latest.note || '-')}
+                    </span>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderStudentsTable(
+        data,
+        selectedCategory = 'all',
+        searchQuery = '',
+        balanceFilter = 'all'
+    ) {
+
+        studentsTableBody.innerHTML = '';
+
+        const categoryVal =
+            selectedCategory.toLowerCase().trim();
+
+        const searchVal =
+            searchQuery.toLowerCase().trim();
+
+        let filteredPayments = data;
+
+        if (categoryVal !== 'all') {
+            filteredPayments =
+                filteredPayments.filter(
+                    p =>
+                        p.category
+                            .toLowerCase()
+                            .trim() === categoryVal
+                );
+        }
+
+        if (searchVal !== '') {
+            filteredPayments =
+                filteredPayments.filter(
+                    p =>
+                        p.name
+                            .toLowerCase()
+                            .includes(searchVal)
+                );
+        }
+
+        const studentMap = {};
+
+        filteredPayments.forEach(p => {
+
+            const key =
+                p.name.toLowerCase().trim();
+
+            if (!studentMap[key]) {
+
+                studentMap[key] = {
+                    name: p.name,
+                    count: 0,
+                    total: 0,
+                    latestBalance: p.balanceDue || 0,
+                    lastCategory: p.category
+                };
+            }
+
+            studentMap[key].count += 1;
+            studentMap[key].total += p.amount;
+            studentMap[key].latestBalance =
+                p.balanceDue || 0;
+
+            studentMap[key].lastCategory =
+                p.category;
+        });
+
+        let studentList =
+            Object.values(studentMap);
+
+        if (balanceFilter === 'due') {
+            studentList = studentList.filter(s => s.latestBalance > 0);
+        } else if (balanceFilter === 'clear') {
+            studentList = studentList.filter(s => !(s.latestBalance > 0));
+        }
+
+        if (studentList.length === 0) {
+
+            studentsTableBody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align:center;">
+                        No matching students found.
+                    </td>
+                </tr>
+            `;
+
+            return;
+        }
+
+        studentList.forEach(s => {
+
+            const row =
+                document.createElement('tr');
+
+            row.innerHTML = `
+                <td>
+                    <strong>
+                        ${escapeHtml(s.name)}
+                    </strong>
+                </td>
+
+                <td>
+                    ${s.count} payment(s)
+                </td>
+
+                <td class="amount-paid">
+                    EGP ${s.total.toLocaleString()}
+                </td>
+
+                <td class="${s.latestBalance > 0 ? 'balance-due' : 'balance-clear'}">
+                    EGP ${s.latestBalance.toLocaleString()}
+                </td>
+
+                <td>
+                    <span class="method-badge">
+                        ${escapeHtml(s.lastCategory)}
+                    </span>
+                </td>
+            `;
+
+            studentsTableBody.appendChild(row);
+        });
+    }
+
+    function filterStudents() {
+
+        renderStudentsTable(
+            payments,
+            studentCategoryFilter.value,
+            studentSearchInput.value,
+            document.getElementById('studentBalanceFilter').value
+        );
+    }
+
+    studentSearchInput.addEventListener(
+        'input',
+        filterStudents
+    );
+
+    studentCategoryFilter.addEventListener(
+        'change',
+        filterStudents
+    );
+
+    document.getElementById('studentBalanceFilter').addEventListener(
+        'change',
+        filterStudents
+    );
+
+    function renderPaymentsTable(data) {
+
+        allPaymentsTableBody.innerHTML = '';
+
+        if (data.length === 0) {
+
+            allPaymentsTableBody.innerHTML = `
+                <tr>
+                    <td colspan="8" style="text-align:center;">
+                        No payment records found.
+                    </td>
+                </tr>
+            `;
+
+            return;
+        }
+
+        data.forEach(p => {
+
+            const row =
+                document.createElement('tr');
+
+            row.innerHTML = `
+                <td>
+                    <strong>
+                        ${escapeHtml(p.name)}
+                    </strong>
+                </td>
+
+                <td>
+                    ${escapeHtml(p.date)}
+                </td>
+
+                <td class="amount-paid">
+                    EGP ${p.amount.toLocaleString()}
+                </td>
+
+                <td class="${(p.balanceDue || 0) > 0 ? 'balance-due' : 'balance-clear'}">
+                    EGP ${(p.balanceDue || 0).toLocaleString()}
+                </td>
+
+                <td>
+                    ${escapeHtml(p.category)}
+                </td>
+
+                <td>
+                    <span class="method-badge">
+                        ${escapeHtml(p.method)}
+                    </span>
+                </td>
+
+                <td>
+                    ${escapeHtml(p.note || '-')}
+                </td>
+
+                <td>
+                    <button
+                        class="btn"
+                        onclick="deletePayment(${p.id})"
+                    >
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            `;
+
+            allPaymentsTableBody.appendChild(row);
+        });
+    }
+
+    paymentSearchInput.addEventListener('input', e => {
+
+        const query =
+            e.target.value.toLowerCase().trim();
+
+        const filtered =
+            payments.filter(
+                p =>
+                    p.name
+                        .toLowerCase()
+                        .includes(query) ||
+                    p.category
+                        .toLowerCase()
+                        .includes(query)
+            );
+
+        renderPaymentsTable(filtered);
+    });
+
+    function renderReports() {
+
+        let totalRev = 0;
+
+        const uniqueStudents = new Set();
+
+        const categoryMap = {};
+        const monthlyMap = {};
+
+        payments.forEach(p => {
+
+            totalRev += p.amount;
+
+            uniqueStudents.add(
+                p.name.toLowerCase().trim()
+            );
+
+            categoryMap[p.category] =
+                (categoryMap[p.category] || 0) +
+                p.amount;
+
+            if (p.date) {
+
+                const monthKey =
+                    p.date.slice(0, 7);
+
+                monthlyMap[monthKey] =
+                    (monthlyMap[monthKey] || 0) +
+                    p.amount;
+            }
+        });
+
+        reportTotalRevenue.textContent =
+            `EGP ${totalRev.toLocaleString()}`;
+
+        reportTotalCount.textContent =
+            payments.length;
+
+        reportUniqueStudents.textContent =
+            uniqueStudents.size;
+
+        categoryBreakdownContainer.innerHTML = '';
+
+        const categories =
+            Object.entries(categoryMap);
+
+        if (categories.length === 0) {
+
+            categoryBreakdownContainer.innerHTML =
+                `<p class="empty-activity">No data available for breakdown.</p>`;
+
+        } else {
+
+            categories.forEach(([cat, sum]) => {
+
+                const item =
+                    document.createElement('div');
+
+                item.className =
+                    'breakdown-item';
+
+                item.innerHTML = `
+                    <span>
+                        ${escapeHtml(cat)}
+                    </span>
+
+                    <strong>
+                        EGP ${sum.toLocaleString()}
+                    </strong>
+                `;
+
+                categoryBreakdownContainer.appendChild(item);
+            });
+        }
+
+        renderMonthlyChart(monthlyMap);
+    }
+
+    function renderMonthlyChart(monthlyMap) {
+
+        const canvas =
+            document.getElementById('monthlyChart');
+
+        if (!canvas) return;
+
+        const ctx =
+            canvas.getContext('2d');
+
+        const sortedMonths =
+            Object.keys(monthlyMap).sort();
+
+        const labels =
+            sortedMonths.map(m => {
+
+                const [year, month] =
+                    m.split('-');
+
+                const dateObj =
+                    new Date(
+                        year,
+                        month - 1,
+                        1
+                    );
+
+                return dateObj.toLocaleString(
+                    'en-US',
+                    {
+                        month: 'short',
+                        year: 'numeric'
+                    }
+                );
+            });
+
+        const dataValues =
+            sortedMonths.map(m =>
+                monthlyMap[m]
+            );
+
+        if (monthlyChartInstance) {
+            monthlyChartInstance.destroy();
+        }
+
+        monthlyChartInstance =
+            new Chart(
+                ctx,
+                {
+                    type: 'bar',
+
+                    data: {
+                        labels:
+                            labels.length > 0
+                                ? labels
+                                : ['No Data'],
+
+                        datasets: [{
+                            label: 'Revenue (EGP)',
+
+                            data:
+                                dataValues.length > 0
+                                    ? dataValues
+                                    : [0],
+
+                            backgroundColor:
+                                '#2563eb',
+
+                            borderRadius: 6
+                        }]
+                    },
+
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            },
+
+                            x: {
+                                grid: {
+                                    display: false
+                                }
+                            }
+                        }
+                    }
+                }
+            );
+    }
+
+    function populateExportDropdowns() {
+
+        const monthsSet =
+            new Set();
+
+        payments.forEach(p => {
+
+            if (p.date) {
+                monthsSet.add(
+                    p.date.slice(0, 7)
+                );
+            }
+        });
+
+        const sortedMonths =
+            Array.from(monthsSet)
+                .sort()
+                .reverse();
+
+        const currentSelectedMonth =
+            exportMonthSelect.value;
+
+        exportMonthSelect.innerHTML =
+            `<option value="all">All Months (Lifetime)</option>`;
+
+        sortedMonths.forEach(m => {
+
+            const [year, month] =
+                m.split('-');
+
+            const dateObj =
+                new Date(
+                    year,
+                    month - 1,
+                    1
+                );
+
+            const monthName =
+                dateObj.toLocaleString(
+                    'en-US',
+                    {
+                        month: 'long',
+                        year: 'numeric'
+                    }
+                );
+
+            const opt =
+                document.createElement('option');
+
+            opt.value = m;
+            opt.textContent = monthName;
+
+            exportMonthSelect.appendChild(opt);
+        });
+
+        if (currentSelectedMonth) {
+            exportMonthSelect.value =
+                currentSelectedMonth;
+        }
+    }
+
+    function downloadCSV(
+        dataArray,
+        filename
+    ) {
+
+        if (dataArray.length === 0) {
+
+            alert(
+                'No data available to export for this selection.'
+            );
+
+            return;
+        }
+
+        let csvContent =
+            'data:text/csv;charset=utf-8,' +
+            'Student Name,Category,Amount (EGP),Balance Due (EGP),Payment Method,Note,Date\n';
+
+        dataArray.forEach(p => {
+
+            const row = [
+                `"${p.name.replace(/"/g, '""')}"`,
+                `"${p.category.replace(/"/g, '""')}"`,
+                p.amount,
+                p.balanceDue || 0,
+                `"${p.method}"`,
+                `"${(p.note || '').replace(/"/g, '""')}"`,
+                `"${p.date}"`
+            ];
+
+            csvContent +=
+                row.join(',') +
+                '\n';
+        });
+
+        const encodedUri =
+            encodeURI(csvContent);
+
+        const link =
+            document.createElement('a');
+
+        link.setAttribute(
+            'href',
+            encodedUri
+        );
+
+        link.setAttribute(
+            'download',
+            filename
+        );
+
+        document.body.appendChild(link);
+
+        link.click();
+
+        document.body.removeChild(link);
+    }
+
+    downloadMonthExcelBtn.addEventListener(
+        'click',
+        () => {
+
+            const selectedMonth =
+                exportMonthSelect.value;
+
+            let filtered =
+                payments;
+
+            let fileSuffix =
+                'All_Months';
+
+            if (selectedMonth !== 'all') {
+
+                filtered =
+                    payments.filter(
+                        p =>
+                            p.date &&
+                            p.date.startsWith(
+                                selectedMonth
+                            )
+                    );
+
+                fileSuffix =
+                    selectedMonth;
+            }
+
+            downloadCSV(
+                filtered,
+                `Coursado_Payments_${fileSuffix}.csv`
+            );
+        }
+    );
+
+    downloadCategoryExcelBtn.addEventListener(
+        'click',
+        () => {
+
+            const selectedCategory =
+                exportCategorySelect.value;
+
+            let filtered =
+                payments;
+
+            let fileSuffix =
+                'All_Categories';
+
+            if (selectedCategory !== 'all') {
+
+                filtered =
+                    payments.filter(
+                        p =>
+                            p.category
+                                .toLowerCase() ===
+                            selectedCategory
+                                .toLowerCase()
+                    );
+
+                fileSuffix =
+                    selectedCategory;
+            }
+
+            downloadCSV(
+                filtered,
+                `Coursado_Payments_Category_${fileSuffix}.csv`
+            );
+        }
+    );
+
+    const openImportBtn =
+        document.getElementById('openImportBtn');
+
+    const importDropZone =
+        document.getElementById('importDropZone');
+
+    const excelFileInput =
+        document.getElementById('excelFileInput');
+
+    const importPreviewModal =
+        document.getElementById(
+            'importPreviewModal'
+        );
+
+    const closeImportPreview =
+        document.getElementById(
+            'closeImportPreview'
+        );
+
+    const cancelImportBtn =
+        document.getElementById(
+            'cancelImportBtn'
+        );
+
+    const confirmImportBtn =
+        document.getElementById(
+            'confirmImportBtn'
+        );
+
+    const importPreviewBody =
+        document.getElementById(
+            'importPreviewBody'
+        );
+
+    const importSummary =
+        document.getElementById(
+            'importSummary'
+        );
+
+    const importStatus =
+        document.getElementById(
+            'importStatus'
+        );
+
+    let parsedImportData = [];
+
+    openImportBtn.addEventListener(
+        'click',
+        () => excelFileInput.click()
+    );
+
+    importDropZone.addEventListener(
+        'click',
+        () => excelFileInput.click()
+    );
+
+    importDropZone.addEventListener(
+        'dragover',
+        e => {
+
+            e.preventDefault();
+
+            importDropZone.style.borderColor =
+                '#2563eb';
+
+            importDropZone.style.background =
+                '#eff6ff';
+        }
+    );
+
+    importDropZone.addEventListener(
+        'dragleave',
+        () => {
+
+            importDropZone.style.borderColor =
+                '#cbd5e1';
+
+            importDropZone.style.background =
+                '#f8fafc';
+        }
+    );
+
+    importDropZone.addEventListener(
+        'drop',
+        e => {
+
+            e.preventDefault();
+
+            importDropZone.style.borderColor =
+                '#cbd5e1';
+
+            importDropZone.style.background =
+                '#f8fafc';
+
+            if (e.dataTransfer.files.length > 0) {
+
+                handleFile(
+                    e.dataTransfer.files[0]
+                );
+            }
+        }
+    );
+
+    excelFileInput.addEventListener(
+        'change',
+        e => {
+
+            if (e.target.files.length > 0) {
+
+                handleFile(
+                    e.target.files[0]
+                );
+            }
+        }
+    );
+
+    function getCategoryFromFileTitle(fileName) {
+
+        const fname =
+            String(fileName || '')
+                .trim()
+                .toLowerCase();
+
+        if (fname.startsWith('m.')) {
+            return 'Movers';
+        }
+
+        if (fname.startsWith('f.')) {
+            return 'Flyers';
+        }
+
+        if (fname.startsWith('k.')) {
+            return 'Kiddos';
+        }
+
+        if (fname.startsWith('j.')) {
+            return 'Juniors';
+        }
+
+        if (fname.startsWith('b.')) {
+            return 'Beginners';
+        }
+
+        if (fname.startsWith('s.')) {
+            return 'Supers';
+        }
+
+        return 'Other';
+    }
+
+    const importSheetSelect = document.getElementById('importSheetSelect');
+    const importCategory = document.getElementById('importCategory');
+    const importGroup = document.getElementById('importGroup');
+    const importTime = document.getElementById('importTime');
+
+    let importWB = null;
+    let importParsed = { students: [], days: [], dates: 0, cancelled: 0 };
+    let importFileName = '';
+
+    importCategory.innerHTML = [...attendanceCategoryFilter.options]
+        .map(o => o.value).filter(v => v !== 'all')
+        .concat('Other')
+        .map(v => `<option value="${v}">${v}</option>`).join('');
+
+    const findAttStudent = s => studentAttendanceList.find(x =>
+        x.name.trim().toLowerCase() === s.name.toLowerCase() &&
+        (!x.mobile || !s.mobile || x.mobile === s.mobile));
+
+    function serialToDate(n) {
+        const p = XLSX.SSF.parse_date_code(n);
+        return p ? new Date(p.y, p.m - 1, p.d, 12) : null;
+    }
+
+    function parseHeaderDate(v, refYear) {
+        if (typeof v === 'number' && v > 30000 && v < 80000) return serialToDate(v);
+        const m = String(v == null ? '' : v).trim().match(/^(\d{1,2})\s*[\/\-.]\s*(\d{1,2})$/);
+        if (!m) return null;
+        const d = new Date(refYear, +m[2] - 1, +m[1], 12);
+        return d.getMonth() === +m[2] - 1 ? d : null;
+    }
+
+    function normalizePhone(v) {
+        let s = String(v == null ? '' : v).replace(/\D/g, '');
+        if (s.startsWith('20') && s.length === 12) s = '0' + s.slice(2);
+        if (s.length === 10 && s[0] === '1') s = '0' + s;
+        return s;
+    }
+
+    // Reads one sheet: Name column, date columns (attendance), mobile, fees, books
+    function parseSheet(ws, fileName) {
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+        const norm = v => String(v == null ? '' : v).trim().toLowerCase();
+        const NAME = ['name', 'names', 'student name', 'student_name'];
+        const hi = rows.findIndex((r, i) => i < 15 && r.some(c => NAME.includes(norm(c))));
+        if (hi < 0) return null;
+
+        const head = rows[hi];
+        const col = keys => head.findIndex(c => keys.includes(norm(c)));
+        const nameCol = col(NAME);
+        const phoneCol = col(['mobile', 'phone', 'mobile phone', 'mobile number', 'tel']);
+        const feeCol = col(['fees', 'fee', 'amount', 'paid', 'price']);
+        const booksCol = col(['books', 'book']);
+
+        let refYear = (String(fileName).match(/20\d\d/) || [new Date().getFullYear()])[0];
+        const serial = head.find(c => typeof c === 'number' && c > 30000 && c < 80000);
+        if (serial) refYear = serialToDate(serial).getFullYear();
+
+        const dateCols = [];
+        head.forEach((c, j) => {
+            if (j === nameCol) return;
+            const d = parseHeaderDate(c, +refYear);
+            if (d) dateCols.push({ j, d });
+        });
+
+        // a cell like "ملغي" (cancelled) means there was no class on that date
+        const cancelledCols = new Set();
+        rows.slice(hi + 1).forEach(r => r.forEach((v, j) => {
+            if (typeof v === 'string' && /ملغ|ملع|cancel/i.test(v)) cancelledCols.add(j);
+        }));
+
+        const students = [];
+        rows.slice(hi + 1).forEach(r => {
+            const name = String(r[nameCol] == null ? '' : r[nameCol]).replace(/\s+/g, ' ').trim();
+            if (!name) return;
+            const weeks = {};
+            let attended = 0;
+            dateCols.forEach(({ j, d }) => {
+                const k = dayKeyOf(d);
+                if (!k) return;
+                const wk = isoDate(weekStartOf(d));
+                const rec = weeks[wk] = weeks[wk] || {};
+                if (cancelledCols.has(j)) { rec[k] = 'cancelled'; return; }
+                rec[k] = r[j] === true || String(r[j]).trim() === '1';
+                if (rec[k]) attended++;
+            });
+            const fee = parseFloat(feeCol >= 0 ? r[feeCol] : 0);
+            students.push({
+                name,
+                mobile: phoneCol >= 0 ? normalizePhone(r[phoneCol]) : '',
+                fee: isNaN(fee) ? 0 : fee,
+                books: booksCol >= 0 && String(r[booksCol]).trim() === '1',
+                weeks,
+                attended
+            });
+        });
+
+        const cnt = {};
+        dateCols.forEach(({ d }) => { const k = dayKeyOf(d); if (k) cnt[k] = (cnt[k] || 0) + 1; });
+
+        return {
+            students,
+            days: Object.keys(cnt).sort((x, y) => cnt[y] - cnt[x]).slice(0, 2),
+            dates: dateCols.length,
+            cancelled: dateCols.filter(c => cancelledCols.has(c.j)).length,
+            hasFees: feeCol >= 0,
+            hasPhone: phoneCol >= 0,
+            title: String((rows[0] || []).find(c => c != null) || '')
+        };
+    }
+
+    function handleFile(file) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                importWB = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                importFileName = file.name;
+
+                importSheetSelect.innerHTML = importWB.SheetNames
+                    .map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+
+                // start with the sheet that has mobile / fees columns
+                importSheetSelect.value = importWB.SheetNames.find(n => {
+                    const p = parseSheet(importWB.Sheets[n], file.name);
+                    return p && (p.hasFees || p.hasPhone);
+                }) || importWB.SheetNames[0];
+
+                loadImportSheet(true);
+                importPreviewModal.style.display = 'flex';
+            } catch (err) {
+                console.error(err);
+                alert('Error parsing file. Please check file format.');
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function loadImportSheet(first) {
+        importParsed = parseSheet(importWB.Sheets[importSheetSelect.value], importFileName);
+        if (!importParsed) {
+            alert('Could not find a "Name" column in this sheet.');
+            importParsed = { students: [], days: [], dates: 0, cancelled: 0 };
+        }
+        if (first) {
+            let cat = getCategoryFromFileTitle(importFileName.replace(/^([a-z])[\s_]/i, '$1.'));
+            if (cat === 'Other') cat = getCategoryFromFileTitle(importParsed.title || '');
+            importCategory.value = cat;
+            const g = importFileName.match(/^([a-z])[\s._-]*(\d+)[\s._-]*([a-z])?/i);
+            importGroup.value = g ? (g[1] + '.' + g[2] + (g[3] || '')).toUpperCase() : '';
+        }
+        document.querySelectorAll('input[name="importDay"]').forEach(cb => {
+            cb.checked = importParsed.days.includes(cb.value);
+        });
+        renderImportPreview();
+    }
+
+    importSheetSelect.addEventListener('change', () => loadImportSheet(false));
+    document.querySelectorAll('input[name="importMode"]').forEach(r => r.addEventListener('change', renderImportPreview));
+
+    function renderImportPreview() {
+        const mode = document.querySelector('input[name="importMode"]:checked').value;
+        const doFees = mode !== 'attendance';
+        const doAtt = mode !== 'fees';
+        const list = importParsed.students;
+
+        importPreviewBody.innerHTML = list.map(s => {
+            const status = [
+                doFees ? (s.fee > 0 ? 'Fees' : 'No fee (skipped)') : '',
+                doAtt ? (findAttStudent(s) ? 'Attendance (update)' : 'Attendance') : ''
+            ].filter(Boolean).join(' + ');
+
+            return `<tr>
+                <td><strong>${escapeHtml(s.name)}</strong></td>
+                <td>${escapeHtml(s.mobile || '-')}</td>
+                <td>${s.fee > 0 ? 'EGP ' + s.fee.toLocaleString() : '-'}</td>
+                <td>${s.attended} / ${importParsed.dates - importParsed.cancelled}</td>
+                <td>${status}</td>
+            </tr>`;
+        }).join('');
+
+        importSummary.innerHTML =
+            `<strong>${list.length}</strong> students found &middot; ` +
+            `${importParsed.dates} class dates (${importParsed.cancelled} cancelled) &middot; ` +
+            `class days: ${importParsed.days.map(d => d.toUpperCase()).join(', ') || 'none'}`;
+    }
+
+    closeImportPreview.addEventListener(
+        'click',
+        () => {
+            importPreviewModal.style.display =
+                'none';
+        }
+    );
+
+    cancelImportBtn.addEventListener(
+        'click',
+        () => {
+            importPreviewModal.style.display =
+                'none';
+        }
+    );
+
+    confirmImportBtn.addEventListener('click', () => {
+        const list = importParsed.students;
+        if (!list.length) return;
+
+        const mode = document.querySelector('input[name="importMode"]:checked').value;
+        const doFees = mode !== 'attendance';
+        const doAtt = mode !== 'fees';
+        const category = importCategory.value;
+        const group = importGroup.value.trim().toUpperCase();
+        const courseTime = importTime.value;
+        const days = [...document.querySelectorAll('input[name="importDay"]')]
+            .filter(c => c.checked).map(c => c.value);
+
+        if (doAtt && (days.length < 1 || days.length > 2)) {
+            alert('Please choose 1 or 2 class days for attendance.');
+            return;
+        }
+        if (doAtt && !group) {
+            alert('Please enter a group for attendance.');
+            return;
+        }
+
+        let uid = Date.now();
+        let nPay = 0, nNew = 0, nUpd = 0;
+
+        if (doFees) {
+            const today = new Date().toISOString().split('T')[0];
+            const fresh = [];
+            list.forEach(s => {
+                if (!(s.fee > 0)) return;
+                const dup = payments.some(p =>
+                    p.name.toLowerCase() === s.name.toLowerCase() &&
+                    p.category === category &&
+                    p.amount === s.fee &&
+                    String(p.note).startsWith('Imported from Excel'));
+                if (dup) return;
+                fresh.push({
+                    id: uid++,
+                    name: s.name,
+                    category,
+                    amount: s.fee,
+                    balanceDue: 0,
+                    note: 'Imported from Excel' + (s.books ? ' - Books' : ''),
+                    method: 'Cash',
+                    date: today
+                });
+            });
+            nPay = fresh.length;
+            payments = [...fresh, ...payments];
+        }
+
+        if (doAtt) {
+            list.forEach(s => {
+                let st = findAttStudent(s);
+                if (st) {
+                    nUpd++;
+                    if (!st.mobile && s.mobile) st.mobile = s.mobile;
+                } else {
+                    st = { id: uid++, name: s.name, mobile: s.mobile, category, group, courseTime, courseDays: days, attendanceByWeek: {} };
+                    studentAttendanceList.push(st);
+                    nNew++;
+                }
+                st.attendanceByWeek = st.attendanceByWeek || {};
+                Object.entries(s.weeks).forEach(([wk, rec]) => {
+                    st.attendanceByWeek[wk] = { ...(st.attendanceByWeek[wk] || {}), ...rec };
+                });
+            });
+            localStorage.setItem('coursado_student_attendance', JSON.stringify(studentAttendanceList));
+        }
+
+        saveAndRender();
+
+        importPreviewModal.style.display = 'none';
+        excelFileInput.value = '';
+
+        const parts = [];
+        if (doFees) parts.push(`${nPay} payments`);
+        if (doAtt) parts.push(`${nNew} new students in attendance${nUpd ? ` (${nUpd} updated)` : ''}`);
+        importStatus.innerHTML =
+            `<span><i class="fa-solid fa-circle-check"></i> Imported ${parts.join(' and ')}.</span>`;
+    });
+
+    function escapeHtml(str) {
+
+        return String(str)
+            .replace(
+                /&/g,
+                '&amp;'
+            )
+            .replace(
+                /</g,
+                '&lt;'
+            )
+            .replace(
+                />/g,
+                '&gt;'
+            )
+            .replace(
+                /"/g,
+                '&quot;'
+            )
+            .replace(
+                /'/g,
+                '&#039;'
+            );
+    }
+
+    renderAllViews();
+
+});
