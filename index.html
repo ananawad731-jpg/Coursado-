@@ -305,7 +305,7 @@
                             <input
                                 type="text"
                                 id="studentSearchInput"
-                                placeholder="Search by student name..."
+                                placeholder="Search by name or balance (e.g. 500, >0)..."
                                 class="search-box"
                             >
 
@@ -384,9 +384,15 @@
                     <input
                         type="text"
                         id="paymentSearchInput"
-                        placeholder="Search records..."
+                        placeholder="Search name, date, or balance (e.g. 500, >0)..."
                         class="search-box"
+                        style="min-width:260px;"
                     >
+                        <select id="paymentBalanceFilter" class="category-filter">
+                            <option value="all">All Balances</option>
+                            <option value="due">Balance Due</option>
+                            <option value="clear">Fully Paid</option>
+                        </select>
                         <button id="clearPaymentsBtn" class="btn danger-btn" type="button">
                             <i class="fa-solid fa-trash-can"></i>
                             Clear All Payments
@@ -653,6 +659,11 @@
                             <b style="min-width:0">Time:</b><input type="time" id="importTime">
                         </div>
                         <div class="import-row">
+                            <b>Payment date:</b>
+                            <span style="color:#6b7280;">Read from the sheet's Date column. Used only for rows with no date:</span>
+                            <input type="date" id="importPayDate">
+                        </div>
+                        <div class="import-row">
                             <b>Class days:</b>
                             <div class="attendance-day-picker">
                                 <label><input type="checkbox" name="importDay" value="sat"> Sat</label>
@@ -667,7 +678,7 @@
                     <div id="importSummary" style="margin:1rem 0;"></div>
                     <div class="table-responsive">
                         <table>
-                            <thead><tr><th>STUDENT</th><th>MOBILE</th><th>FEES</th><th>ATTENDED</th><th>WILL BE ADDED TO</th></tr></thead>
+                            <thead><tr><th>STUDENT</th><th>MOBILE</th><th>FEES</th><th>BALANCE DUE</th><th>PAYMENT DATE</th><th>ATTENDED</th><th>WILL BE ADDED TO</th></tr></thead>
                             <tbody id="importPreviewBody"></tbody>
                         </table>
                     </div>

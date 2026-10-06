@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const studentSearchInput = document.getElementById('studentSearchInput');
     const studentCategoryFilter = document.getElementById('studentCategoryFilter');
     const paymentSearchInput = document.getElementById('paymentSearchInput');
+    const paymentBalanceFilter = document.getElementById('paymentBalanceFilter');
 
     const reportTotalRevenue = document.getElementById('reportTotalRevenue');
     const reportTotalCount = document.getElementById('reportTotalCount');
@@ -1044,7 +1045,7 @@ document.addEventListener('DOMContentLoaded', () => {
             balanceFilterVal
         );
 
-        renderPaymentsTable(payments);
+        filterPayments();
 
         renderStaffAttendance();
 
@@ -1224,7 +1225,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 );
         }
 
-        if (searchVal !== '') {
+        // typing a number (500) or a comparison (>0, <=200) searches the balance due
+        const balanceQuery = parseBalanceQuery(searchVal);
+
+        if (searchVal !== '' && !balanceQuery) {
             filteredPayments =
                 filteredPayments.filter(
                     p =>
@@ -1236,7 +1240,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const studentMap = {};
 
-        filteredPayments.forEach(p => {
+        // oldest -> newest, so the last payment processed is the real latest one
+        [...filteredPayments].sort(byDateAsc).forEach(p => {
 
             const key =
                 p.name.toLowerCase().trim();
@@ -1263,6 +1268,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let studentList =
             Object.values(studentMap);
+
+        if (balanceQuery) {
+            studentList = studentList.filter(s => balanceQuery.test(s.latestBalance));
+        }
 
         if (balanceFilter === 'due') {
             studentList = studentList.filter(s => s.latestBalance > 0);
@@ -1412,24 +1421,68 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    paymentSearchInput.addEventListener('input', e => {
+    /* ---------- Balance search helpers ---------- */
+    // "500" -> balance equals 500 | ">0", ">=500", "<200", "=0" -> comparison
+    function parseBalanceQuery(q) {
+        const t = String(q || '').trim().replace(/,/g, '');
+        const op = t.match(/^(>=|<=|>|<|=)\s*(\d+(?:\.\d+)?)$/);
+        if (op) {
+            const n = parseFloat(op[2]);
+            const tests = {
+                '>': b => b > n, '>=': b => b >= n,
+                '<': b => b < n, '<=': b => b <= n,
+                '=': b => b === n
+            };
+            return { test: tests[op[1]], isOperator: true };
+        }
+        if (/^\d+(\.\d+)?$/.test(t)) {
+            const n = parseFloat(t);
+            return { test: b => b === n, isOperator: false };
+        }
+        return null;
+    }
 
-        const query =
-            e.target.value.toLowerCase().trim();
+    function byDateAsc(a, b) {
+        return String(a.date || '').localeCompare(String(b.date || '')) || (a.id - b.id);
+    }
 
-        const filtered =
-            payments.filter(
-                p =>
-                    p.name
-                        .toLowerCase()
-                        .includes(query) ||
-                    p.category
-                        .toLowerCase()
-                        .includes(query)
+    function byDateDesc(a, b) {
+        return byDateAsc(b, a);
+    }
+
+    function filterPayments() {
+
+        const query = paymentSearchInput.value.toLowerCase().trim();
+        const balanceMode = paymentBalanceFilter ? paymentBalanceFilter.value : 'all';
+        const balanceQuery = parseBalanceQuery(query);
+
+        const filtered = payments.filter(p => {
+
+            const bal = p.balanceDue || 0;
+
+            if (balanceMode === 'due' && !(bal > 0)) return false;
+            if (balanceMode === 'clear' && bal > 0) return false;
+
+            if (!query) return true;
+
+            if (balanceQuery) {
+                if (balanceQuery.test(bal)) return true;
+                if (balanceQuery.isOperator) return false;
+            }
+
+            return [p.name, p.category, p.note, p.date].some(
+                f => String(f || '').toLowerCase().includes(query)
             );
+        });
 
         renderPaymentsTable(filtered);
-    });
+    }
+
+    paymentSearchInput.addEventListener('input', filterPayments);
+
+    if (paymentBalanceFilter) {
+        paymentBalanceFilter.addEventListener('change', filterPayments);
+    }
 
     function renderReports() {
 
@@ -1949,6 +2002,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const importCategory = document.getElementById('importCategory');
     const importGroup = document.getElementById('importGroup');
     const importTime = document.getElementById('importTime');
+    const importPayDate = document.getElementById('importPayDate');
 
     let importWB = null;
     let importParsed = { students: [], days: [], dates: 0, cancelled: 0 };
@@ -1976,6 +2030,57 @@ document.addEventListener('DOMContentLoaded', () => {
         return d.getMonth() === +m[2] - 1 ? d : null;
     }
 
+    // ---- payment date parsing (Excel serial, Date, 15/3/2025, 2025-03-15, "March", "15 Mar 2025") ----
+    const MONTH_PATTERNS = [
+        /^jan|^يناير|^كانون\s*الثاني/i, /^feb|^فبراير|^شباط/i, /^mar|^مارس|^آذار/i,
+        /^apr|^أبريل|^ابريل|^نيسان/i, /^may|^مايو|^أيار/i, /^jun|^يونيو|^يونيه|^حزيران/i,
+        /^jul|^يوليو|^يوليه|^تموز/i, /^aug|^أغسطس|^اغسطس|^آب/i, /^sep|^سبتمبر|^أيلول/i,
+        /^oct|^أكتوبر|^اكتوبر|^تشرين\s*الأول/i, /^nov|^نوفمبر|^تشرين\s*الثاني/i, /^dec|^ديسمبر|^كانون\s*الأول/i
+    ];
+
+    function mkDate(y, m, d) {
+        const dt = new Date(y, m - 1, d, 12);
+        return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d ? dt : null;
+    }
+
+    function parsePayDate(v, refYear) {
+        if (v == null || v === '') return null;
+        if (v instanceof Date && !isNaN(v)) return new Date(v.getFullYear(), v.getMonth(), v.getDate(), 12);
+        if (typeof v === 'number') return v > 30000 && v < 80000 ? serialToDate(v) : null;
+
+        const s = String(v).trim();
+        let m;
+
+        if ((m = s.match(/^(\d{4})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{1,2})/))) {
+            return mkDate(+m[1], +m[2], +m[3]);
+        }
+
+        // day/month/year (Egypt style). If the month part is > 12 we swap automatically.
+        if ((m = s.match(/^(\d{1,2})\s*[\/\-.]\s*(\d{1,2})(?:\s*[\/\-.]\s*(\d{2,4}))?$/))) {
+            let d = +m[1], mo = +m[2];
+            let y = m[3] ? +m[3] : +refYear;
+            if (y < 100) y += 2000;
+            if (mo > 12 && d <= 12) [d, mo] = [mo, d];
+            return mkDate(y, mo, d);
+        }
+
+        // text month: "March", "Mar 2025", "15 March 2025", "مارس"
+        const words = s.split(/[\s,\-\/.]+/).filter(Boolean);
+        const mi = MONTH_PATTERNS.findIndex(re => words.some(w => re.test(w)));
+        if (mi >= 0) {
+            const nums = words.filter(w => /^\d+$/.test(w));
+            const yearTok = nums.find(w => w.length === 4);
+            const dayTok = nums.find(w => w.length <= 2);
+            return mkDate(yearTok ? +yearTok : +refYear, mi + 1, dayTok ? +dayTok : 1);
+        }
+        return null;
+    }
+
+    const parseMoney = v => {
+        const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
+        return isNaN(n) ? 0 : n;
+    };
+
     function normalizePhone(v) {
         let s = String(v == null ? '' : v).replace(/\D/g, '');
         if (s.startsWith('20') && s.length === 12) s = '0' + s.slice(2);
@@ -1997,6 +2102,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const phoneCol = col(['mobile', 'phone', 'mobile phone', 'mobile number', 'tel']);
         const feeCol = col(['fees', 'fee', 'amount', 'paid', 'price']);
         const booksCol = col(['books', 'book']);
+        const balanceCol = col(['balance', 'balance due', 'due', 'remaining', 'remain', 'rest', 'outstanding', 'المتبقي', 'متبقي', 'الباقي', 'باقي']);
+        let payDateCol = col(['date', 'payment date', 'paid date', 'paid on', 'date paid', 'pay date', 'تاريخ', 'التاريخ', 'تاريخ الدفع', 'تاريخ السداد']);
+        if (payDateCol < 0) payDateCol = col(['month', 'payment month', 'الشهر', 'شهر']);
 
         let refYear = (String(fileName).match(/20\d\d/) || [new Date().getFullYear()])[0];
         const serial = head.find(c => typeof c === 'number' && c > 30000 && c < 80000);
@@ -2016,6 +2124,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }));
 
         const students = [];
+        let badDates = 0;
         rows.slice(hi + 1).forEach(r => {
             const name = String(r[nameCol] == null ? '' : r[nameCol]).replace(/\s+/g, ' ').trim();
             if (!name) return;
@@ -2030,11 +2139,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 rec[k] = r[j] === true || String(r[j]).trim() === '1';
                 if (rec[k]) attended++;
             });
-            const fee = parseFloat(feeCol >= 0 ? r[feeCol] : 0);
+            const fee = feeCol >= 0 ? parseMoney(r[feeCol]) : 0;
+            const rawDate = payDateCol >= 0 ? r[payDateCol] : null;
+            const payDate = parsePayDate(rawDate, +refYear);
+            if (rawDate != null && String(rawDate).trim() !== '' && !payDate) badDates++;
             students.push({
                 name,
                 mobile: phoneCol >= 0 ? normalizePhone(r[phoneCol]) : '',
-                fee: isNaN(fee) ? 0 : fee,
+                fee,
+                balance: balanceCol >= 0 ? parseMoney(r[balanceCol]) : 0,
+                payDate,
                 books: booksCol >= 0 && String(r[booksCol]).trim() === '1',
                 weeks,
                 attended
@@ -2051,6 +2165,10 @@ document.addEventListener('DOMContentLoaded', () => {
             cancelled: dateCols.filter(c => cancelledCols.has(c.j)).length,
             hasFees: feeCol >= 0,
             hasPhone: phoneCol >= 0,
+            hasDate: payDateCol >= 0,
+            hasBalance: balanceCol >= 0,
+            dateHeader: payDateCol >= 0 ? String(head[payDateCol]).trim() : '',
+            badDates,
             title: String((rows[0] || []).find(c => c != null) || '')
         };
     }
@@ -2088,6 +2206,7 @@ document.addEventListener('DOMContentLoaded', () => {
             importParsed = { students: [], days: [], dates: 0, cancelled: 0 };
         }
         if (first) {
+            importPayDate.value = isoDate(new Date());
             let cat = getCategoryFromFileTitle(importFileName.replace(/^([a-z])[\s_]/i, '$1.'));
             if (cat === 'Other') cat = getCategoryFromFileTitle(importParsed.title || '');
             importCategory.value = cat;
@@ -2102,32 +2221,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
     importSheetSelect.addEventListener('change', () => loadImportSheet(false));
     document.querySelectorAll('input[name="importMode"]').forEach(r => r.addEventListener('change', renderImportPreview));
+    importPayDate.addEventListener('change', renderImportPreview);
 
     function renderImportPreview() {
         const mode = document.querySelector('input[name="importMode"]:checked').value;
         const doFees = mode !== 'attendance';
         const doAtt = mode !== 'fees';
         const list = importParsed.students;
+        const fallbackDate = importPayDate.value || isoDate(new Date());
+        const hasPay = s => s.fee > 0 || s.balance > 0;
 
         importPreviewBody.innerHTML = list.map(s => {
             const status = [
-                doFees ? (s.fee > 0 ? 'Fees' : 'No fee (skipped)') : '',
+                doFees ? (hasPay(s) ? 'Fees' : 'No fee (skipped)') : '',
                 doAtt ? (findAttStudent(s) ? 'Attendance (update)' : 'Attendance') : ''
             ].filter(Boolean).join(' + ');
+
+            const dateCell = s.payDate
+                ? isoDate(s.payDate)
+                : `<span style="color:#9ca3af;" title="No date in the sheet - using the default date">${fallbackDate} (default)</span>`;
 
             return `<tr>
                 <td><strong>${escapeHtml(s.name)}</strong></td>
                 <td>${escapeHtml(s.mobile || '-')}</td>
                 <td>${s.fee > 0 ? 'EGP ' + s.fee.toLocaleString() : '-'}</td>
+                <td class="${s.balance > 0 ? 'balance-due' : ''}">${s.balance > 0 ? 'EGP ' + s.balance.toLocaleString() : '-'}</td>
+                <td>${doFees && hasPay(s) ? dateCell : '-'}</td>
                 <td>${s.attended} / ${importParsed.dates - importParsed.cancelled}</td>
                 <td>${status}</td>
             </tr>`;
         }).join('');
 
+        const withDate = list.filter(s => s.payDate && hasPay(s)).length;
+        const paying = list.filter(hasPay).length;
+        const dateNote = importParsed.hasDate
+            ? `payment date read from "<strong>${escapeHtml(importParsed.dateHeader)}</strong>" for ${withDate} of ${paying} payments` +
+              (importParsed.badDates ? ` <span style="color:#dc2626;">(${importParsed.badDates} date(s) could not be read - default date used)</span>` : '')
+            : `<span style="color:#dc2626;">no Date column found - all payments use the default date ${fallbackDate}</span>`;
+
         importSummary.innerHTML =
             `<strong>${list.length}</strong> students found &middot; ` +
             `${importParsed.dates} class dates (${importParsed.cancelled} cancelled) &middot; ` +
-            `class days: ${importParsed.days.map(d => d.toUpperCase()).join(', ') || 'none'}`;
+            `class days: ${importParsed.days.map(d => d.toUpperCase()).join(', ') || 'none'}` +
+            `<br>${dateNote}` +
+            (importParsed.hasBalance ? ' &middot; balance due column detected' : ' &middot; no Balance column found (balance = 0)');
     }
 
     closeImportPreview.addEventListener(
@@ -2172,14 +2309,17 @@ document.addEventListener('DOMContentLoaded', () => {
         let nPay = 0, nNew = 0, nUpd = 0;
 
         if (doFees) {
-            const today = new Date().toISOString().split('T')[0];
+            const fallbackDate = importPayDate.value || isoDate(new Date());
             const fresh = [];
             list.forEach(s => {
-                if (!(s.fee > 0)) return;
+                if (!(s.fee > 0 || s.balance > 0)) return;
+                // the payment goes to the month of the date written in the Excel row
+                const date = s.payDate ? isoDate(s.payDate) : fallbackDate;
                 const dup = payments.some(p =>
                     p.name.toLowerCase() === s.name.toLowerCase() &&
                     p.category === category &&
                     p.amount === s.fee &&
+                    p.date === date &&
                     String(p.note).startsWith('Imported from Excel'));
                 if (dup) return;
                 fresh.push({
@@ -2187,14 +2327,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     name: s.name,
                     category,
                     amount: s.fee,
-                    balanceDue: 0,
+                    balanceDue: s.balance,
                     note: 'Imported from Excel' + (s.books ? ' - Books' : ''),
                     method: 'Cash',
-                    date: today
+                    date
                 });
             });
             nPay = fresh.length;
-            payments = [...fresh, ...payments];
+            // newest payment date first, so "Recent Payments" shows the latest dates
+            payments = [...fresh, ...payments].sort(byDateDesc);
         }
 
         if (doAtt) {
