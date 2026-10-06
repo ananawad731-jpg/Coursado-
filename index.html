@@ -380,12 +380,18 @@
                         All Payment Records
                     </h2>
 
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
                     <input
                         type="text"
                         id="paymentSearchInput"
                         placeholder="Search records..."
                         class="search-box"
                     >
+                        <button id="clearPaymentsBtn" class="btn danger-btn" type="button">
+                            <i class="fa-solid fa-trash-can"></i>
+                            Clear All Payments
+                        </button>
+                    </div>
 
                 </div>
 
@@ -426,10 +432,20 @@
                         <h2>Student Attendance</h2>
                         <p class="export-description">Track student attendance from Saturday through Thursday. Friday is not included.</p>
                     </div>
-                    <button id="openAddStudentAttendanceModal" class="btn primary-btn">
-                        <i class="fa-solid fa-user-plus"></i>
-                        Add Student
-                    </button>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <button id="clearStudentWeekBtn" class="btn danger-btn" type="button">
+                            <i class="fa-solid fa-eraser"></i>
+                            Clear This Week
+                        </button>
+                        <button id="clearStudentAllBtn" class="btn danger-btn" type="button">
+                            <i class="fa-solid fa-trash-can"></i>
+                            Clear All Students
+                        </button>
+                        <button id="openAddStudentAttendanceModal" class="btn primary-btn">
+                            <i class="fa-solid fa-user-plus"></i>
+                            Add Student
+                        </button>
+                    </div>
                 </div>
 
                 <div class="student-search-controls attendance-filters">
@@ -501,6 +517,10 @@
                         <h2>Books Inventory</h2>
                         <p class="export-description">Enter how many books you have for each stage. When you tick the Book box for a student in Student Attendance, that stage's count goes down by one (unticking gives it back).</p>
                     </div>
+                    <button id="clearBooksBtn" class="btn danger-btn" type="button">
+                        <i class="fa-solid fa-rotate-left"></i>
+                        Reset All Counts to 0
+                    </button>
                 </div>
 
                 <div id="booksGrid" class="books-grid"></div>
@@ -519,10 +539,20 @@
                         <h2>Staff Attendance Tracker</h2>
                         <p class="export-description">Attendance is saved week by week (Saturday to Thursday). Tick a day to record attendance, then set that day's arrival & departure time. Use the arrows to look at previous weeks.</p>
                     </div>
-                    <button id="openAddStaffModal" class="btn primary-btn">
-                        <i class="fa-solid fa-user-plus"></i>
-                        Add Staff Member
-                    </button>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <button id="clearStaffWeekBtn" class="btn danger-btn" type="button">
+                            <i class="fa-solid fa-eraser"></i>
+                            Clear This Week
+                        </button>
+                        <button id="clearStaffAllBtn" class="btn danger-btn" type="button">
+                            <i class="fa-solid fa-trash-can"></i>
+                            Clear All Staff
+                        </button>
+                        <button id="openAddStaffModal" class="btn primary-btn">
+                            <i class="fa-solid fa-user-plus"></i>
+                            Add Staff Member
+                        </button>
+                    </div>
                 </div>
 
                 <div class="week-nav">

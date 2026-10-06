@@ -698,3 +698,15 @@ td.balance-due {
 td.balance-clear {
     color: var(--muted);
 }
+
+/* Clear / danger buttons */
+
+.danger-btn {
+    color: var(--danger);
+    border-color: #fecaca;
+}
+
+.danger-btn:hover {
+    background: #fef2f2;
+    border-color: var(--danger);
+}

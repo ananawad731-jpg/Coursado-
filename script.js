@@ -2253,6 +2253,54 @@ document.addEventListener('DOMContentLoaded', () => {
             );
     }
 
+    /* ---------- Clear data (per section) ---------- */
+    const BACKUP_HINT = '\n\nThis cannot be undone. Tip: download a backup first (Reports & Exports page).';
+
+    document.getElementById('clearPaymentsBtn').addEventListener('click', () => {
+        if (payments.length === 0) { alert('There are no payments to clear.'); return; }
+        if (!confirm('Delete ALL ' + payments.length + ' payment records?\n\nThe Dashboard, Students directory and Reports are built from payments, so they will go back to 0 too.' + BACKUP_HINT)) return;
+        payments = [];
+        lastAddedPayment = null;
+        saveAndRender();
+    });
+
+    document.getElementById('clearStudentWeekBtn').addEventListener('click', () => {
+        const wk = weekKeyView();
+        if (!confirm('Clear all student attendance ticks for the week of ' + fmtShort(viewWeekStart) + '?\n\nStudents stay in the list; other weeks are not touched.' + BACKUP_HINT)) return;
+        studentAttendanceList.forEach(st => { if (st.attendanceByWeek) delete st.attendanceByWeek[wk]; });
+        localStorage.setItem('coursado_student_attendance', JSON.stringify(studentAttendanceList));
+        renderStudentAttendance();
+    });
+
+    document.getElementById('clearStudentAllBtn').addEventListener('click', () => {
+        if (studentAttendanceList.length === 0) { alert('There are no students to clear.'); return; }
+        if (!confirm('Remove ALL ' + studentAttendanceList.length + ' students and their attendance history for every week?\n\nBook stock counts are not changed.' + BACKUP_HINT)) return;
+        studentAttendanceList = [];
+        localStorage.setItem('coursado_student_attendance', JSON.stringify(studentAttendanceList));
+        renderStudentAttendance();
+    });
+
+    document.getElementById('clearStaffWeekBtn').addEventListener('click', () => {
+        const wk = staffWeekKey();
+        if (!confirm('Clear all staff attendance and times for the week of ' + fmtShort(staffViewWeekStart) + '?\n\nStaff members stay in the list; other weeks are not touched.' + BACKUP_HINT)) return;
+        staffList.forEach(st => { if (st.weeks) delete st.weeks[wk]; });
+        saveAndRenderStaff();
+    });
+
+    document.getElementById('clearStaffAllBtn').addEventListener('click', () => {
+        if (staffList.length === 0) { alert('There are no staff members to clear.'); return; }
+        if (!confirm('Remove ALL ' + staffList.length + ' staff members and their attendance history for every week?' + BACKUP_HINT)) return;
+        staffList = [];
+        saveAndRenderStaff();
+    });
+
+    document.getElementById('clearBooksBtn').addEventListener('click', () => {
+        if (!confirm('Reset the book count of every stage to 0?' + BACKUP_HINT)) return;
+        BOOK_STAGES.forEach(stage => { booksStock[stage] = 0; });
+        saveBooksStock();
+        renderBooks();
+    });
+
     /* ---------- Backup & Restore ---------- */
     const BACKUP_KEYS = [
         'coursado_dashboard_payments',
