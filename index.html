@@ -517,7 +517,7 @@
                 <div class="panel-header">
                     <div>
                         <h2>Staff Attendance Tracker</h2>
-                        <p class="export-description">Tick a day to record attendance, then set that day's arrival & departure time. Default times are filled in automatically and can be edited per day.</p>
+                        <p class="export-description">Attendance is saved week by week (Saturday to Thursday). Tick a day to record attendance, then set that day's arrival & departure time. Use the arrows to look at previous weeks.</p>
                     </div>
                     <button id="openAddStaffModal" class="btn primary-btn">
                         <i class="fa-solid fa-user-plus"></i>
@@ -525,19 +525,28 @@
                     </button>
                 </div>
 
+                <div class="week-nav">
+                    <button id="staffPrevWeekBtn" class="btn" type="button"><i class="fa-solid fa-chevron-left"></i> Previous Week</button>
+                    <div class="week-nav-center">
+                        <span id="staffWeekLabel" class="week-label"></span>
+                        <button id="staffCurrentWeekBtn" class="btn" type="button">This Week</button>
+                    </div>
+                    <button id="staffNextWeekBtn" class="btn" type="button">Next Week <i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+
                 <div class="table-responsive">
                     <table>
                         <thead>
                             <tr>
                                 <th>STAFF NAME</th>
-                                <th>SAT</th>
-                                <th>SUN</th>
-                                <th>MON</th>
-                                <th>TUE</th>
-                                <th>WED</th>
-                                <th>THU</th>
+                                <th id="staffDayHead_sat">SAT</th>
+                                <th id="staffDayHead_sun">SUN</th>
+                                <th id="staffDayHead_mon">MON</th>
+                                <th id="staffDayHead_tue">TUE</th>
+                                <th id="staffDayHead_wed">WED</th>
+                                <th id="staffDayHead_thu">THU</th>
                                 <th>WEEKLY TOTAL</th>
-                                <th>MONTHLY TOTAL</th>
+                                <th id="staffMonthHead">MONTHLY TOTAL</th>
                                 <th>ACTION</th>
                             </tr>
                         </thead>

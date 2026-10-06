@@ -122,6 +122,21 @@ document.addEventListener('DOMContentLoaded', () => {
         delete s.attendance;
     });
 
+    // old staff data had one single week; keep it as the current week
+    staffList.forEach(st => {
+        if (!st.weeks) {
+            st.weeks = {};
+            const hasOld = st.attendance && Object.values(st.attendance).some(Boolean);
+            if (hasOld) {
+                st.weeks[isoDate(currentWeekStart())] = { attendance: st.attendance, timings: st.timings || {} };
+            }
+        }
+        delete st.attendance;
+        delete st.timings;
+        delete st.monthlyDays;
+    });
+    localStorage.setItem('coursado_dashboard_staff', JSON.stringify(staffList));
+
     function renderWeekHeader() {
         const end = addDays(viewWeekStart, 5);
         const isCurrent = weekKeyView() === isoDate(currentWeekStart());
@@ -255,16 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const newStaff = {
             id: Date.now(),
             name: name,
-            attendance: {
-                sat: false,
-                sun: false,
-                mon: false,
-                tue: false,
-                wed: false,
-                thu: false
-            },
-            timings: createEmptyTimings(),
-            monthlyDays: 0,
+            weeks: {},
             arrivedAt: '09:00',
             departureAt: '17:00'
         };
@@ -295,41 +301,66 @@ document.addEventListener('DOMContentLoaded', () => {
         timingModal.style.display = 'none';
     });
 
-    const WEEK_DAYS = ['sat', 'sun', 'mon', 'tue', 'wed', 'thu'];
+    const WEEK_DAYS = DAY_KEYS;
 
-    function createEmptyTimings() {
-        const t = {};
-        WEEK_DAYS.forEach(day => {
-            t[day] = { arr: '', dep: '' };
-        });
-        return t;
+    let staffViewWeekStart = currentWeekStart();
+    const staffWeekKey = () => isoDate(staffViewWeekStart);
+
+    // Returns the record of one staff member for one week (created only when create = true)
+    function staffWeekRec(staff, wk, create) {
+        staff.weeks = staff.weeks || {};
+        let rec = staff.weeks[wk];
+        if (!rec && create) rec = staff.weeks[wk] = { attendance: {}, timings: {} };
+        if (rec) {
+            rec.attendance = rec.attendance || {};
+            rec.timings = rec.timings || {};
+            return rec;
+        }
+        return { attendance: {}, timings: {} };
     }
 
-    function ensureStaffShape(staff) {
-        if (!staff.attendance) {
-            staff.attendance = {};
-        }
-        if (!staff.timings) {
-            staff.timings = createEmptyTimings();
-        }
-        WEEK_DAYS.forEach(day => {
-            if (typeof staff.attendance[day] === 'undefined') {
-                staff.attendance[day] = false;
-            }
-            if (!staff.timings[day]) {
-                staff.timings[day] = { arr: '', dep: '' };
-            }
+    // Number of attended days that fall inside the month of `ref`, across all saved weeks
+    function staffMonthCount(staff, ref) {
+        let n = 0;
+        Object.entries(staff.weeks || {}).forEach(([wk, rec]) => {
+            const start = new Date(wk + 'T12:00:00');
+            WEEK_DAYS.forEach((k, i) => {
+                if (rec.attendance && rec.attendance[k]) {
+                    const d = addDays(start, i);
+                    if (d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth()) n++;
+                }
+            });
         });
+        return n;
     }
+
+    function renderStaffWeekHeader() {
+        const end = addDays(staffViewWeekStart, 5);
+        const isCurrent = staffWeekKey() === isoDate(currentWeekStart());
+        document.getElementById('staffWeekLabel').innerHTML =
+            '<strong>' + fmtShort(staffViewWeekStart) + ' - ' + fmtShort(end) + ' ' + end.getFullYear() + '</strong>' +
+            (isCurrent ? ' <span class="method-badge">This week</span>' : '');
+        document.getElementById('staffNextWeekBtn').disabled = isCurrent;
+        WEEK_DAYS.forEach((k, i) => {
+            const th = document.getElementById('staffDayHead_' + k);
+            if (th) th.innerHTML = k.toUpperCase() + '<small>' + fmtShort(addDays(staffViewWeekStart, i)) + '</small>';
+        });
+        document.getElementById('staffMonthHead').innerHTML =
+            'MONTHLY TOTAL<small>' + MONTHS[end.getMonth()] + ' ' + end.getFullYear() + '</small>';
+    }
+
+    document.getElementById('staffPrevWeekBtn').addEventListener('click', () => { staffViewWeekStart = addDays(staffViewWeekStart, -7); renderStaffAttendance(); });
+    document.getElementById('staffNextWeekBtn').addEventListener('click', () => { staffViewWeekStart = addDays(staffViewWeekStart, 7); renderStaffAttendance(); });
+    document.getElementById('staffCurrentWeekBtn').addEventListener('click', () => { staffViewWeekStart = currentWeekStart(); renderStaffAttendance(); });
 
     window.updateStaffTiming = function(staffId, day, field, value) {
         const staff = staffList.find(s => s.id === staffId);
 
         if (!staff) return;
 
-        ensureStaffShape(staff);
-
-        staff.timings[day][field] = value;
+        const rec = staffWeekRec(staff, staffWeekKey(), true);
+        rec.timings[day] = rec.timings[day] || { arr: '', dep: '' };
+        rec.timings[day][field] = value;
 
         localStorage.setItem(
             'coursado_dashboard_staff',
@@ -354,31 +385,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!staff) return;
 
-        ensureStaffShape(staff);
+        const rec = staffWeekRec(staff, staffWeekKey(), true);
 
-        staff.attendance[dayKey] = !staff.attendance[dayKey];
+        rec.attendance[dayKey] = !rec.attendance[dayKey];
 
-        if (staff.attendance[dayKey]) {
-            if (!staff.timings[dayKey].arr) {
-                staff.timings[dayKey].arr = staff.arrivedAt || '09:00';
+        if (rec.attendance[dayKey]) {
+            rec.timings[dayKey] = rec.timings[dayKey] || { arr: '', dep: '' };
+            if (!rec.timings[dayKey].arr) {
+                rec.timings[dayKey].arr = staff.arrivedAt || '09:00';
             }
-            if (!staff.timings[dayKey].dep) {
-                staff.timings[dayKey].dep = staff.departureAt || '17:00';
+            if (!rec.timings[dayKey].dep) {
+                rec.timings[dayKey].dep = staff.departureAt || '17:00';
             }
-
-            staff.monthlyDays = (staff.monthlyDays || 0) + 1;
-        } else {
-            staff.monthlyDays = Math.max(
-                0,
-                (staff.monthlyDays || 0) - 1
-            );
         }
 
         saveAndRenderStaff();
     };
 
     window.deleteStaff = function(id) {
-        if (confirm('Are you sure you want to remove this staff member?')) {
+        if (confirm('Are you sure you want to remove this staff member? Their attendance history for all weeks will be deleted too.')) {
             staffList = staffList.filter(s => s.id !== id);
 
             saveAndRenderStaff();
@@ -395,12 +420,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderStaffAttendance() {
+        renderStaffWeekHeader();
+
         staffAttendanceTableBody.innerHTML = '';
 
         if (staffList.length === 0) {
             staffAttendanceTableBody.innerHTML = `
                 <tr>
-                    <td colspan="11" style="text-align:center;">
+                    <td colspan="10" style="text-align:center;">
                         No staff members added yet.
                     </td>
                 </tr>
@@ -409,23 +436,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const days = [
-            'sat',
-            'sun',
-            'mon',
-            'tue',
-            'wed',
-            'thu'
-        ];
+        const monthRef = addDays(staffViewWeekStart, 5);
 
         staffList.forEach(staff => {
 
-            ensureStaffShape(staff);
+            const rec = staffWeekRec(staff, staffWeekKey(), false);
 
             let weeklyTotal = 0;
 
-            days.forEach(day => {
-                if (staff.attendance[day]) {
+            WEEK_DAYS.forEach(day => {
+                if (rec.attendance[day]) {
                     weeklyTotal++;
                 }
             });
@@ -437,41 +457,44 @@ document.addEventListener('DOMContentLoaded', () => {
                     <strong>${escapeHtml(staff.name)}</strong>
                 </td>
 
-                ${days.map(day => `
+                ${WEEK_DAYS.map(day => {
+                    const t = rec.timings[day] || { arr: '', dep: '' };
+                    return `
                     <td class="staff-day-cell">
                         <input
                             type="checkbox"
                             class="attendance-checkbox"
-                            ${staff.attendance[day] ? 'checked' : ''}
+                            ${rec.attendance[day] ? 'checked' : ''}
                             onchange="toggleStaffAttendance(${staff.id}, '${day}')"
                         >
-                        ${staff.attendance[day] ? `
+                        ${rec.attendance[day] ? `
                             <div class="time-pair">
                                 <label>Arr
                                     <input
                                         type="time"
-                                        value="${escapeHtml(staff.timings[day].arr || '')}"
+                                        value="${escapeHtml(t.arr || '')}"
                                         onchange="updateStaffTiming(${staff.id}, '${day}', 'arr', this.value)"
                                     >
                                 </label>
                                 <label>Dep
                                     <input
                                         type="time"
-                                        value="${escapeHtml(staff.timings[day].dep || '')}"
+                                        value="${escapeHtml(t.dep || '')}"
                                         onchange="updateStaffTiming(${staff.id}, '${day}', 'dep', this.value)"
                                     >
                                 </label>
                             </div>
                         ` : ''}
                     </td>
-                `).join('')}
+                `;
+                }).join('')}
 
                 <td>
                     ${weeklyTotal} day(s)
                 </td>
 
                 <td>
-                    ${staff.monthlyDays || 0} day(s)
+                    ${staffMonthCount(staff, monthRef)} day(s)
                 </td>
 
                 <td>
