@@ -2023,11 +2023,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function parseHeaderDate(v, refYear) {
-        if (typeof v === 'number' && v > 30000 && v < 80000) return serialToDate(v);
-        const m = String(v == null ? '' : v).trim().match(/^(\d{1,2})\s*[\/\-.]\s*(\d{1,2})$/);
-        if (!m) return null;
-        const d = new Date(refYear, +m[2] - 1, +m[1], 12);
-        return d.getMonth() === +m[2] - 1 ? d : null;
+        if (v instanceof Date && !isNaN(v)) return new Date(v.getFullYear(), v.getMonth(), v.getDate(), 12);
+        if (typeof v === 'number') return v > 30000 && v < 80000 ? serialToDate(v) : null;
+        if (v == null) return null;
+        // "15/3", "Sat 15/3", "15-Mar", "15 Mar 2025", "2025-03-15" ...
+        const raw = toAsciiDigits(v);
+        const wd = raw.match(WEEKDAY_WORDS);
+        let s = raw.replace(WEEKDAY_WORDS, ' ').trim();
+        if (!/\d/.test(s)) return null;
+        // letters are only allowed when they are a real month name ("15 Mar"), so "Mark 1" is not a date
+        if (/[a-z]/i.test(s) && !/\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?)\b/i.test(s)) return null;
+        const d = parsePayDate(s, refYear);
+        // no year written but a weekday is (e.g. "Sat 1/3"): pick the year where that weekday is right
+        if (d && wd && !/\b(19|20)\d\d\b/.test(s)) {
+            const w = wd[0].toLowerCase();
+            const idx = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].findIndex(x => w.startsWith(x));
+            const arIdx = ['الاحد', 'الأحد', 'الاثنين', 'الإثنين', 'الثلاثاء', 'الاربعاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+            const arMap = [0, 0, 1, 1, 2, 3, 3, 4, 5, 6];
+            const want = idx >= 0 ? idx : (arIdx.indexOf(wd[0]) >= 0 ? arMap[arIdx.indexOf(wd[0])] : -1);
+            if (want >= 0 && d.getDay() !== want) {
+                for (const dy of [-1, 1, -2, 2, -3, 3]) {
+                    const alt = parsePayDate(s + '/' + (+refYear + dy), refYear);
+                    if (alt && alt.getDay() === want) return alt;
+                }
+            }
+        }
+        return d;
     }
 
     // ---- payment date parsing (Excel serial, Date, 15/3/2025, 2025-03-15, "March", "15 Mar 2025") ----
@@ -2076,58 +2097,196 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
 
+    const toAsciiDigits = s => String(s)
+        .replace(/[\u0660-\u0669]/g, d => d.charCodeAt(0) - 0x660)
+        .replace(/[\u06F0-\u06F9]/g, d => d.charCodeAt(0) - 0x6F0)
+        .replace(/\u066B/g, '.')
+        .replace(/\u066C/g, ',');
+
     const parseMoney = v => {
-        const n = parseFloat(String(v == null ? '' : v).replace(/,/g, ''));
-        return isNaN(n) ? 0 : n;
+        if (typeof v === 'number') return isFinite(v) ? v : 0;
+        const s = toAsciiDigits(v == null ? '' : v).replace(/,/g, '');
+        const m = s.match(/-?\d+(\.\d+)?/);
+        return m ? parseFloat(m[0]) : 0;
     };
 
     function normalizePhone(v) {
-        let s = String(v == null ? '' : v).replace(/\D/g, '');
+        let raw = toAsciiDigits(v == null ? '' : v);
+        // a cell may hold two numbers ("0101... / 0111...") - keep the first
+        const first = raw.split(/[\/,;\n]|\s-\s/).map(x => x.replace(/\D/g, '')).find(x => x.length >= 7);
+        let s = first || raw.replace(/\D/g, '');
         if (s.startsWith('20') && s.length === 12) s = '0' + s.slice(2);
         if (s.length === 10 && s[0] === '1') s = '0' + s;
         return s;
     }
 
-    // Reads one sheet: Name column, date columns (attendance), mobile, fees, books
-    function parseSheet(ws, fileName) {
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
-        const norm = v => String(v == null ? '' : v).trim().toLowerCase();
-        const NAME = ['name', 'names', 'student name', 'student_name'];
-        const hi = rows.findIndex((r, i) => i < 15 && r.some(c => NAME.includes(norm(c))));
-        if (hi < 0) return null;
+    // ---- flexible header matching (English + Arabic, extra words allowed) ----
+    const normText = v => String(v == null ? '' : v)
+        .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+        .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+        .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase();
 
-        const head = rows[hi];
-        const col = keys => head.findIndex(c => keys.includes(norm(c)));
-        const nameCol = col(NAME);
-        const phoneCol = col(['mobile', 'phone', 'mobile phone', 'mobile number', 'tel']);
-        const feeCol = col(['fees', 'fee', 'amount', 'paid', 'price']);
-        const booksCol = col(['books', 'book']);
-        const balanceCol = col(['balance', 'balance due', 'due', 'remaining', 'remain', 'rest', 'outstanding', 'المتبقي', 'متبقي', 'الباقي', 'باقي']);
-        let payDateCol = col(['date', 'payment date', 'paid date', 'paid on', 'date paid', 'pay date', 'تاريخ', 'التاريخ', 'تاريخ الدفع', 'تاريخ السداد']);
-        if (payDateCol < 0) payDateCol = col(['month', 'payment month', 'الشهر', 'شهر']);
+    const hasWord = (text, kws) => {
+        const t = ' ' + text + ' ';
+        return kws.some(k => t.includes(' ' + k + ' '));
+    };
+
+    const KW = {
+        name: ['name', 'names', 'student', 'students', 'اسم', 'الاسم', 'الاسماء', 'الطالب', 'طالب', 'الطالبه', 'طالبه', 'الطلاب'],
+        nameAvoid: ['teacher', 'parent', 'father', 'mother', 'guardian', 'مدرس', 'المدرس', 'والد', 'الوالد', 'ولي', 'والده', 'الام', 'الاب'],
+        phone: ['mobile', 'phone', 'tel', 'telephone', 'whatsapp', 'cell', 'contact', 'موبايل', 'الموبايل', 'محمول', 'المحمول', 'تليفون', 'التليفون', 'هاتف', 'الهاتف', 'واتس', 'واتساب', 'الواتس', 'الواتساب'],
+        balance: ['balance', 'due', 'remaining', 'remain', 'rest', 'outstanding', 'left', 'المتبقي', 'متبقي', 'الباقي', 'باقي', 'المطلوب', 'مطلوب'],
+        date: ['date', 'paid on', 'تاريخ', 'التاريخ'],
+        month: ['month', 'الشهر', 'شهر'],
+        books: ['book', 'books', 'كتاب', 'الكتاب', 'كتب', 'الكتب'],
+        fee: ['fees', 'fee', 'amount', 'paid', 'price', 'cost', 'tuition', 'الرسوم', 'رسوم', 'المبلغ', 'مبلغ', 'المدفوع', 'مدفوع', 'دفع', 'الدفع', 'المصروفات', 'مصروفات', 'سعر', 'السعر', 'الاشتراك', 'اشتراك'],
+        feeAvoid: ['method', 'note', 'notes', 'طريقه', 'ملاحظات', 'ملاحظه']
+    };
+
+    const WEEKDAY_WORDS = /\b(sat|sun|mon|tue|tues|wed|thu|thur|thurs|fri|saturday|sunday|monday|tuesday|wednesday|thursday|friday)\b|السبت|الاحد|الأحد|الاثنين|الإثنين|الثلاثاء|الاربعاء|الأربعاء|الخميس|الجمعة/gi;
+
+    // Reads one sheet: Name column, date columns (attendance), mobile, fees, books.
+    // Works with: header on any of the first 30 rows, English/Arabic headers,
+    // extra words in headers, ticks/yes/present marks, Arabic digits.
+    function parseSheet(ws, fileName) {
+        if (!ws) return null;
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null })
+            .map(r => Array.isArray(r) ? r : []);
+        if (!rows.length) return null;
+
+        const cellStr = c => String(c == null ? '' : c).trim();
+        const nonEmpty = r => r.filter(c => cellStr(c) !== '').length;
+        const isTotalName = n => /^(total|totals|sum|grand total|المجموع|مجموع|الاجمالي|اجمالي)( |$)/.test(normText(n));
 
         let refYear = (String(fileName).match(/20\d\d/) || [new Date().getFullYear()])[0];
-        const serial = head.find(c => typeof c === 'number' && c > 30000 && c < 80000);
-        if (serial) refYear = serialToDate(serial).getFullYear();
+        for (const r of rows.slice(0, 30)) {
+            const serial = r.find(c => typeof c === 'number' && c > 30000 && c < 80000);
+            if (serial) { refYear = serialToDate(serial).getFullYear(); break; }
+        }
 
+        // 1) find the header row = the row with the most recognisable headers
+        const rowScore = r => {
+            let s = 0, hasName = false;
+            r.forEach(c => {
+                const t = normText(c);
+                if (!t) return;
+                const isName = hasWord(t, KW.name);
+                if (isName) hasName = true;
+                if (isName || hasWord(t, KW.phone) || hasWord(t, KW.balance) || hasWord(t, KW.date) ||
+                    hasWord(t, KW.books) || hasWord(t, KW.fee)) s += 1;
+                else if (parseHeaderDate(c, +refYear)) s += 0.5;
+            });
+            return { score: s + nonEmpty(r) * 0.01, hasName };
+        };
+
+        let hi = -1, bestScore = 0;
+        rows.slice(0, 30).forEach((r, i) => {
+            const { score, hasName } = rowScore(r);
+            if (hasName && score > bestScore) { bestScore = score; hi = i; }
+        });
+
+        let guessed = false;
+        let head, nameCol = -1;
+
+        if (hi >= 0) {
+            head = rows[hi];
+        } else {
+            // 2) no "Name" header at all: guess the column that is mostly text
+            hi = rows.findIndex((r, i) => i < 30 && nonEmpty(r) >= 2);
+            if (hi < 0) return null;
+            head = rows[hi];
+            const body = rows.slice(hi + 1, hi + 400);
+            const width = Math.max(head.length, ...body.map(r => r.length));
+            let bestN = 0;
+            for (let j = 0; j < width; j++) {
+                const n = body.filter(r => typeof r[j] === 'string' && /\p{L}{2,}/u.test(r[j]) && !isTotalName(r[j])).length;
+                if (n > bestN) { bestN = n; nameCol = j; }
+            }
+            if (bestN < 1) return null;
+            guessed = true;
+        }
+
+        // 3) map the other columns (each column used once)
+        const taken = new Set();
+        const findCol = (kws, avoid) => {
+            for (let j = 0; j < head.length; j++) {
+                if (taken.has(j) || j === nameCol) continue;
+                const t = normText(head[j]);
+                if (!t) continue;
+                if (hasWord(t, kws) && !(avoid && hasWord(t, avoid))) { taken.add(j); return j; }
+            }
+            return -1;
+        };
+
+        let phoneCol = findCol(KW.phone);
+        let payDateCol = findCol(KW.date);
+        if (payDateCol < 0) payDateCol = findCol(KW.month);
+        const balanceCol = findCol(KW.balance);
+        const booksCol = findCol(KW.books);
+        const feeCol = findCol(KW.fee, KW.feeAvoid);
+
+        if (nameCol < 0) {
+            const cands = [];
+            head.forEach((c, j) => {
+                if (taken.has(j)) return;
+                if (hasWord(normText(c), KW.name)) cands.push(j);
+            });
+            const good = cands.filter(j => !hasWord(normText(head[j]), KW.nameAvoid));
+            nameCol = (good.length ? good : cands)[0];
+        }
+        if (nameCol == null || nameCol < 0) return null;
+        taken.add(nameCol);
+
+        // no "Mobile" header? look for a column full of phone numbers
+        if (phoneCol < 0) {
+            const body = rows.slice(hi + 1, hi + 200);
+            const width = Math.max(head.length, ...body.map(r => r.length));
+            for (let j = 0; j < width; j++) {
+                if (taken.has(j)) continue;
+                const vals = body.map(r => r[j]).filter(v => cellStr(v) !== '');
+                if (vals.length < 2) continue;
+                const ok = vals.filter(v => /^(0?1[0125]\d{8}|20 ?1[0125]\d{8})$/.test(normalizePhone(v))).length;
+                if (ok / vals.length >= 0.6) { phoneCol = j; taken.add(j); break; }
+            }
+        }
+
+        // 4) attendance date columns (header row, or the row just above it)
         const dateCols = [];
-        head.forEach((c, j) => {
-            if (j === nameCol) return;
+        const addDates = r => r.forEach((c, j) => {
+            if (j === nameCol || taken.has(j) || dateCols.some(x => x.j === j)) return;
             const d = parseHeaderDate(c, +refYear);
             if (d) dateCols.push({ j, d });
         });
+        addDates(head);
+        if (!dateCols.length && hi > 0) addDates(rows[hi - 1]);
+        dateCols.sort((a, b) => a.j - b.j);
 
         // a cell like "ملغي" (cancelled) means there was no class on that date
+        const dataRows = rows.slice(hi + 1);
         const cancelledCols = new Set();
-        rows.slice(hi + 1).forEach(r => r.forEach((v, j) => {
+        dataRows.forEach(r => r.forEach((v, j) => {
             if (typeof v === 'string' && /ملغ|ملع|cancel/i.test(v)) cancelledCols.add(j);
         }));
 
+        const isPresent = v => {
+            if (v === true) return true;
+            if (typeof v === 'number') return v > 0;
+            const s = toAsciiDigits(cellStr(v)).toLowerCase();
+            if (!s) return false;
+            if (/^[✓✔☑✅√]/.test(s)) return true;
+            if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s) > 0;
+            return ['v', 'p', 'y', 'yes', 'true', 'present', 'attended', 'حاضر', 'حضر', 'حاضره', 'ح'].includes(s);
+        };
+
         const students = [];
         let badDates = 0;
-        rows.slice(hi + 1).forEach(r => {
-            const name = String(r[nameCol] == null ? '' : r[nameCol]).replace(/\s+/g, ' ').trim();
-            if (!name) return;
+        const nameExact = ['name', 'student name', 'students', 'student', 'الاسم', 'اسم الطالب', 'الطالب'];
+
+        dataRows.forEach(r => {
+            const name = cellStr(r[nameCol]).replace(/\s+/g, ' ');
+            if (!name || /^[\d\s.]+$/.test(name) || isTotalName(name)) return;
+            if (nameExact.includes(normText(name))) return; // repeated header row
+
             const weeks = {};
             let attended = 0;
             dateCols.forEach(({ j, d }) => {
@@ -2136,24 +2295,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 const wk = isoDate(weekStartOf(d));
                 const rec = weeks[wk] = weeks[wk] || {};
                 if (cancelledCols.has(j)) { rec[k] = 'cancelled'; return; }
-                rec[k] = r[j] === true || String(r[j]).trim() === '1';
+                rec[k] = isPresent(r[j]);
                 if (rec[k]) attended++;
             });
+
             const fee = feeCol >= 0 ? parseMoney(r[feeCol]) : 0;
             const rawDate = payDateCol >= 0 ? r[payDateCol] : null;
             const payDate = parsePayDate(rawDate, +refYear);
-            if (rawDate != null && String(rawDate).trim() !== '' && !payDate) badDates++;
+            if (rawDate != null && cellStr(rawDate) !== '' && !payDate) badDates++;
             students.push({
                 name,
                 mobile: phoneCol >= 0 ? normalizePhone(r[phoneCol]) : '',
                 fee,
                 balance: balanceCol >= 0 ? parseMoney(r[balanceCol]) : 0,
                 payDate,
-                books: booksCol >= 0 && String(r[booksCol]).trim() === '1',
+                books: booksCol >= 0 && isPresent(r[booksCol]),
                 weeks,
                 attended
             });
         });
+
+        if (!students.length) return null;
 
         const cnt = {};
         dateCols.forEach(({ d }) => { const k = dayKeyOf(d); if (k) cnt[k] = (cnt[k] || 0) + 1; });
@@ -2167,33 +2329,57 @@ document.addEventListener('DOMContentLoaded', () => {
             hasPhone: phoneCol >= 0,
             hasDate: payDateCol >= 0,
             hasBalance: balanceCol >= 0,
-            dateHeader: payDateCol >= 0 ? String(head[payDateCol]).trim() : '',
+            dateHeader: payDateCol >= 0 ? cellStr(head[payDateCol]) : '',
             badDates,
+            guessed,
             title: String((rows[0] || []).find(c => c != null) || '')
         };
     }
 
     function handleFile(file) {
+        const isText = /\.(csv|tsv|txt)$/i.test(file.name || '');
         const reader = new FileReader();
         reader.onload = function (e) {
             try {
-                importWB = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                const buf = new Uint8Array(e.target.result);
+
+                if (isText) {
+                    // decode CSV ourselves so Arabic text is not garbled
+                    let text = new TextDecoder('utf-8').decode(buf);
+                    if (text.includes('\uFFFD')) {
+                        try { text = new TextDecoder('windows-1256').decode(buf); } catch (_) { /* keep utf-8 */ }
+                    }
+                    importWB = XLSX.read(text.replace(/^\uFEFF/, ''), { type: 'string', raw: true });
+                } else {
+                    importWB = XLSX.read(buf, { type: 'array' });
+                }
                 importFileName = file.name;
 
                 importSheetSelect.innerHTML = importWB.SheetNames
                     .map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
 
-                // start with the sheet that has mobile / fees columns
-                importSheetSelect.value = importWB.SheetNames.find(n => {
+                // open the sheet that looks most like a student list
+                let bestName = null, bestScore = -1;
+                importWB.SheetNames.forEach(n => {
                     const p = parseSheet(importWB.Sheets[n], file.name);
-                    return p && (p.hasFees || p.hasPhone);
-                }) || importWB.SheetNames[0];
+                    if (!p) return;
+                    const score = p.students.length + (p.hasFees ? 1000 : 0) + (p.hasPhone ? 1000 : 0) + (p.dates ? 500 : 0);
+                    if (score > bestScore) { bestScore = score; bestName = n; }
+                });
 
+                if (!bestName) {
+                    alert('Could not find any student names in this file. Make sure the sheet has a column of student names (e.g. "Name" / "الاسم").');
+                    return;
+                }
+
+                importSheetSelect.value = bestName;
                 loadImportSheet(true);
                 importPreviewModal.style.display = 'flex';
             } catch (err) {
                 console.error(err);
                 alert('Error parsing file. Please check file format.');
+            } finally {
+                excelFileInput.value = ''; // allow choosing the same file again
             }
         };
         reader.readAsArrayBuffer(file);
@@ -2202,7 +2388,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function loadImportSheet(first) {
         importParsed = parseSheet(importWB.Sheets[importSheetSelect.value], importFileName);
         if (!importParsed) {
-            alert('Could not find a "Name" column in this sheet.');
+            alert('Could not find any student names in this sheet. Try another sheet from the list.');
             importParsed = { students: [], days: [], dates: 0, cancelled: 0 };
         }
         if (first) {
@@ -2264,7 +2450,8 @@ document.addEventListener('DOMContentLoaded', () => {
             `${importParsed.dates} class dates (${importParsed.cancelled} cancelled) &middot; ` +
             `class days: ${importParsed.days.map(d => d.toUpperCase()).join(', ') || 'none'}` +
             `<br>${dateNote}` +
-            (importParsed.hasBalance ? ' &middot; balance due column detected' : ' &middot; no Balance column found (balance = 0)');
+            (importParsed.hasBalance ? ' &middot; balance due column detected' : ' &middot; no Balance column found (balance = 0)') +
+            (importParsed.guessed ? '<br><span style="color:#d97706;">No "Name" header found - the name column was guessed. Please check the preview before importing.</span>' : '');
     }
 
     closeImportPreview.addEventListener(
